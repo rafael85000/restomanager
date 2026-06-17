@@ -1,14 +1,11 @@
 'use client';
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { supabase } from '../../lib/supabase';
-import { APP_NAME, APP_NAME_FULL } from '../../lib/config';
+import { APP_NAME } from '../../lib/config';
 
 export default function Auth() {
-  const router = useRouter();
   const [mode, setMode] = useState('login');
   const [nom, setNom] = useState('');
-  const [nomResto, setNomResto] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -29,22 +26,15 @@ export default function Auth() {
         setLoading(false);
         return;
       }
-      if (data.user) {
-        // Créer le premier établissement pour ce nouveau client
-        await supabase.from('etablissements').insert([{
-          nom: nomResto || 'Mon établissement',
-          compte_client_id: data.user.id,
-        }]);
-      }
-      router.push('/dashboard');
+      window.location.href = '/etablissements';
     } else {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) {
         setError(traduireErreur(error.message));
         setLoading(false);
         return;
       }
-      router.push('/dashboard');
+      window.location.href = '/dashboard';
     }
   }
 
@@ -80,21 +70,15 @@ export default function Auth() {
 
         <form onSubmit={handleSubmit}>
           {mode === 'signup' && (
-            <>
-              <div style={{ marginBottom:'14px' }}>
-                <label style={{ fontSize:'13px', fontWeight:'500', color:'#5f5e5a', display:'block', marginBottom:'5px' }}>Votre nom</label>
-                <input value={nom} onChange={e => setNom(e.target.value)} required style={{ width:'100%', padding:'10px 14px', borderRadius:'8px', border:'0.5px solid #d3d1c7', fontSize:'14px', outline:'none' }} placeholder="Rafael Colonnello" />
-              </div>
-              <div style={{ marginBottom:'14px' }}>
-                <label style={{ fontSize:'13px', fontWeight:'500', color:'#5f5e5a', display:'block', marginBottom:'5px' }}>Nom de votre établissement</label>
-                <input value={nomResto} onChange={e => setNomResto(e.target.value)} required style={{ width:'100%', padding:'10px 14px', borderRadius:'8px', border:'0.5px solid #d3d1c7', fontSize:'14px', outline:'none' }} placeholder="Ex : Le Bistrot du Coin" />
-              </div>
-            </>
+            <div style={{ marginBottom:'14px' }}>
+              <label style={{ fontSize:'13px', fontWeight:'500', color:'#5f5e5a', display:'block', marginBottom:'5px' }}>Votre nom</label>
+              <input value={nom} onChange={e => setNom(e.target.value)} required style={{ width:'100%', padding:'10px 14px', borderRadius:'8px', border:'0.5px solid #d3d1c7', fontSize:'14px', outline:'none' }} placeholder="Rafael Colonnello" />
+            </div>
           )}
 
           <div style={{ marginBottom:'14px' }}>
             <label style={{ fontSize:'13px', fontWeight:'500', color:'#5f5e5a', display:'block', marginBottom:'5px' }}>Adresse email</label>
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)} required style={{ width:'100%', padding:'10px 14px', borderRadius:'8px', border:'0.5px solid #d3d1c7', fontSize:'14px', outline:'none' }} placeholder="chef@monresto.fr" />
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)} required style={{ width:'100%', padding:'10px 14px', borderRadius:'8px', border:'0.5px solid #d3d1c7', fontSize:'14px', outline:'none' }} placeholder="vous@exemple.fr" />
           </div>
 
           <div style={{ marginBottom:'14px' }}>
@@ -108,7 +92,7 @@ export default function Auth() {
 
           {mode === 'signup' && (
             <div style={{ fontSize:'12px', color:'#888780', marginBottom:'14px' }}>
-              14 jours d'essai gratuit avec toutes les fonctionnalités Pro débloquées. Sans engagement.
+              Vous pourrez créer votre établissement et choisir votre abonnement juste après.
             </div>
           )}
 

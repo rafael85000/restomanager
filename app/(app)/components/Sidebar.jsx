@@ -31,6 +31,7 @@ const menu = [
     { label: 'Établissements', icon: 'ti-building', href: '/etablissements' },
     { label: 'Équipe', icon: 'ti-users', href: '/equipe' },
     { label: 'Mon compte', icon: 'ti-settings', href: '/compte' },
+    { label: 'Mon abonnement', icon: 'ti-credit-card', href: '/abonnement' },
   ]},
 ];
 
@@ -54,7 +55,9 @@ export default function Sidebar() {
   }
 
   async function chargerEtablissements() {
-    const { data } = await supabase.from('etablissements').select('*').order('created_at');
+  const { data: userData } = await supabase.auth.getUser();
+  const userId = userData?.user?.id;
+  const { data } = await supabase.from('etablissements').select('*').eq('compte_client_id', userId).order('created_at');
     setEtablissements(data || []);
     const savedId = typeof window !== 'undefined' ? window.localStorage?.getItem('etablissement_actif') : null;
     const actif = data?.find(e => e.id === savedId) || data?.[0];

@@ -1,0 +1,83 @@
+import { createServerClient } from '@supabase/ssr';
+import { NextResponse } from 'next/server';
+
+export async function proxy(request) {
+  let response = NextResponse.next({ request });
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) => {
+            request.cookies.set(name, value);
+          });
+          response = NextResponse.next({ request });
+          cookiesToSet.forEach(({ name, value, options }) => {
+            response.cookies.set(name, value, options);
+          });
+        },
+      },
+    }
+  );
+
+  const { data: { user } } = await supabase.auth.getUser();
+  const pathname = request.nextUrl.pathname;
+
+  const isAuthPage = pathname === '/auth';
+  const isEtablissementsPage = pathname === '/etablissements';
+  const isAbonnementPage = pathname === '/abonnement';
+  const isPublicPage = pathname === '/' || isAuthPage;
+
+  if (!user && !isPublicPage) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/auth';
+    return NextResponse.redirect(url);
+  }
+
+  if (user && isAuthPage) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/etablissements';
+    return NextResponse.redirect(url);
+  }
+
+  if (user && !isPublicPage && !isEtablissementsPage) {
+    const { count: nbEtabs } = await supabase
+      .from('etablissements')
+      .select('*', { count: 'exact', head: true })
+      .eq('compte_client_id', user.id);
+
+    if (!nbEtabs || nbEtabs === 0) {
+      const url = request.nextUrl.clone();
+      url.pathname = '/etablissements';
+      return NextResponse.redirect(url);
+    }
+
+    if (!isAbonnementPage) {
+      const { data: abo } = await supabase
+        .from('abonnements')
+        .select('statut, date_fin_essai')
+        .eq('compte_client_id', user.id)
+        .single();
+
+      const essaiValide = abo?.statut === 'essai' && abo?.date_fin_essai && new Date(abo.date_fin_essai) > new Date();
+      const estActif = abo?.statut === 'actif';
+
+      if (!essaiValide && !estActif) {
+        const url = request.nextUrl.clone();
+        url.pathname = '/abonnement';
+        return NextResponse.redirect(url);
+      }
+    }
+  }
+
+  return response;
+}
+
+export const config = {
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|api).*)'],
+};
