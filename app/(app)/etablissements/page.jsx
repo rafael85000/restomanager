@@ -80,8 +80,27 @@ export default function Etablissements() {
 
     setCreationEnCours(false);
     setModal(false);
-    toast('Établissement "' + form.nom + '" créé avec succès');
-    setTimeout(() => window.location.reload(), 800);
+
+    const priceId = form.plan === 'pro' ? 'price_1Tjj3I0NPo8JSaJpiMU5Akka' : 'price_1Tjj3I0NPo8JSaJpQGdafIR8';
+
+    const resStripe = await fetch('/api/creer-session-paiement', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        price_id: priceId,
+        compte_client_id: userId,
+        email: userData?.user?.email,
+        etablissement_id: nouvelEtab.id,
+      }),
+    });
+    const resultStripe = await resStripe.json();
+
+    if (resultStripe.url) {
+      window.location.href = resultStripe.url;
+    } else {
+      toast('Établissement créé, mais erreur de paiement : ' + (resultStripe.error || 'inconnue'));
+      setTimeout(() => window.location.reload(), 1500);
+    }
   }
 
   const planInfo = {
