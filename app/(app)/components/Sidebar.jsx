@@ -11,8 +11,8 @@ const menu = [
   { section: 'Produits & Recettes', items: [
     { label: 'Mercuriale', icon: 'ti-list', href: '/mercuriale' },
     { label: 'Fournisseurs', icon: 'ti-building-store', href: '/fournisseurs' },
-    { label: 'Fiches recettes', icon: 'ti-tools-kitchen-2', href: '/recettes' },
-    { label: 'Fiches techniques', icon: 'ti-file-description', href: '/fiches' },
+    { label: 'Fiches recettes', icon: 'ti-tools-kitchen-2', href: '/fiches' },
+    { label: 'Fiches techniques', icon: 'ti-file-description', href: '/recettes' },
     { label: 'Allergènes', icon: 'ti-alert-triangle', href: '/allergenes' },
     { label: 'Saisonnalité', icon: 'ti-plant', href: '/saisonnalite' },
   ]},
