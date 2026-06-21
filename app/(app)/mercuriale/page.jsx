@@ -374,7 +374,8 @@ function PanneauImport({ fournisseurs, etablissementId, onImportDone, onClose })
   const [fichier, setFichier] = useState(null)
   const [colonnes, setColonnes] = useState([])
   const [mapping, setMapping] = useState({})
-  const [lignes, setLignes] = useState([])
+  const [lignes, setLignes] = useState([])           // Pour Excel/CSV : toutes les lignes
+  const [lignesPDFCompletes, setLignesPDFCompletes] = useState([]) // Pour PDF : tous les produits extraits dès l'analyse
   const [doublons, setDoublons] = useState([])
   const [detectionEnCours, setDetectionEnCours] = useState(false)
   const [detectionFaite, setDetectionFaite] = useState(false)
@@ -386,6 +387,7 @@ function PanneauImport({ fournisseurs, etablissementId, onImportDone, onClose })
   const [iaAnalyse, setIaAnalyse] = useState(null)
   const [iaEnCours, setIaEnCours] = useState(false)
   const [fournisseurDefaut, setFournisseurDefaut] = useState('')
+  const [estPDF, setEstPDF] = useState(false)
 
   const dlModele = async () => {
     const { utils, writeFile } = await import('xlsx')
@@ -408,9 +410,8 @@ function PanneauImport({ fournisseurs, etablissementId, onImportDone, onClose })
       const isPDF = fichier.name.toLowerCase().endsWith('.pdf')
 
       if (isPDF) {
-        // ── PDF : envoi direct à Claude en base64 ──────────
+        // ── PDF : UN SEUL appel qui extrait TOUT dès maintenant ──
         const buffer = await fichier.arrayBuffer()
-        // Conversion base64 sans dépasser la limite de pile
         const bytes = new Uint8Array(buffer)
         let binary = ''
         const chunkSize = 8192
@@ -424,16 +425,16 @@ function PanneauImport({ fournisseurs, etablissementId, onImportDone, onClose })
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             prompt: `Analyse ce PDF qui est un tarif fournisseur pour un restaurateur.
-Extrait TOUS les produits que tu trouves et retourne-les en JSON.
+Extrait TOUS les produits que tu trouves.
 Ignore les titres, totaux, sous-totaux, en-têtes de page, lignes vides.
-Pour chaque produit extrait : nom (obligatoire), prix_ht (nombre décimal HT si possible), unite_facturation (kg/L/pièce/boite...), reference (code article si présent), fournisseur_nom (nom du fournisseur si présent dans le document).
+Pour chaque produit : nom (obligatoire), prix_ht (nombre décimal HT), unite_facturation (kg/L/pièce/boite...), reference (code si présent), fournisseur_nom (nom du fournisseur si présent).
 
-Réponds UNIQUEMENT en JSON valide, format :
+Réponds UNIQUEMENT en JSON valide :
 {
   "produits": [
     { "nom": "Poulet fermier", "prix_ht": 4.50, "unite_facturation": "kg", "reference": "REF001", "fournisseur_nom": "Metro" }
   ],
-  "commentaire": "Explication courte de ce que tu as trouvé"
+  "commentaire": "Explication courte de la structure du PDF"
 }`,
             pdf_base64: base64
           })
@@ -447,9 +448,9 @@ Réponds UNIQUEMENT en JSON valide, format :
           return
         }
 
-        // On affiche les produits extraits à l'étape 2 pour validation manuelle
+        // On stocke TOUS les produits en mémoire
         const colonnesPDF = ['nom', 'prix_ht', 'unite_facturation', 'reference', 'fournisseur_nom']
-        const lignesPDF = parsed.produits.map(p => [
+        const toutesLignes = parsed.produits.map(p => [
           p.nom || '',
           p.prix_ht || 0,
           p.unite_facturation || '',
@@ -457,8 +458,12 @@ Réponds UNIQUEMENT en JSON valide, format :
           p.fournisseur_nom || ''
         ])
 
+        // On affiche SEULEMENT 1 ligne exemple à l'étape 2
+        const ligneExemple = [toutesLignes[0]]
+
         setColonnes(colonnesPDF)
-        setLignes(lignesPDF)
+        setLignes(ligneExemple)           // 1 seule ligne pour la vérification visuelle
+        setLignesPDFCompletes(toutesLignes) // toutes les lignes en mémoire pour la confirmation
         setMapping({
           nom: 'nom',
           prix_ht: 'prix_ht',
@@ -467,9 +472,10 @@ Réponds UNIQUEMENT en JSON valide, format :
           fournisseur_nom: 'fournisseur_nom'
         })
         setIaAnalyse({
-          commentaire: `${parsed.commentaire} — ${parsed.produits.length} produits extraits du PDF. Vérifiez le mapping ci-dessous.`,
+          commentaire: `${parsed.commentaire} — ${parsed.produits.length} produits détectés. Aperçu du 1er produit ci-dessous, vérifiez le mapping.`,
           confiance: { nom: 95, prix_ht: 90, unite_facturation: 75, reference: 80, fournisseur_nom: 70 }
         })
+        setEstPDF(true)
         setStep(2)
         return
       }
@@ -544,6 +550,7 @@ Réponds UNIQUEMENT en JSON valide :
       setColonnes(entetes)
       setMapping(mappingIA.mapping)
       setLignes(lignesDonnees)
+      setEstPDF(false)
       setIaAnalyse(mappingIA)
       setStep(2)
 
@@ -557,10 +564,14 @@ Réponds UNIQUEMENT en JSON valide :
 
   const lancerDetection = async () => {
     setDetectionEnCours(true)
+
+    // Pour la détection doublons, on utilise les vraies lignes complètes
+    const lignesAAnalyser = estPDF ? lignesPDFCompletes : lignes
+
     const { data: existants } = await supabase
       .from('produits').select('id, nom, prix_ht, reference').eq('etablissement_id', etablissementId)
 
-    const nouvelles = lignes.map(row => {
+    const nouvelles = lignesAAnalyser.map(row => {
       const obj = {}
       colonnes.forEach((col, i) => {
         const champ = mapping[col]
@@ -598,7 +609,11 @@ Réponds UNIQUEMENT en JSON : { "doublons": [{ "nouveau": "nom", "existant_id": 
 
   const confirmerImport = async () => {
     try {
-      const nouvelles = lignes.map(row => {
+      // Pour PDF : on utilise les lignes complètes déjà en mémoire (pas de 2ème appel !)
+      // Pour Excel/CSV : on utilise les lignes normales
+      const lignesAImporter = estPDF ? lignesPDFCompletes : lignes
+
+      const nouvelles = lignesAImporter.map(row => {
         const obj = { etablissement_id: etablissementId }
         colonnes.forEach((col, i) => {
           const champ = mapping[col]
@@ -661,6 +676,9 @@ Réponds UNIQUEMENT en JSON : { "doublons": [{ "nouveau": "nom", "existant_id": 
   const btnPrimary = { ...btnStyle, background: '#534ab7', color: '#fff', border: 'none' }
   const inputStyle = { padding: '8px 11px', borderRadius: 8, border: '0.5px solid #d3d1c7', fontSize: 12, color: '#2c2c2a', background: '#fff', outline: 'none', width: '100%' }
 
+  // Nombre total de lignes à importer (pour l'affichage à l'étape 5)
+  const nbLignesTotal = estPDF ? lignesPDFCompletes.length : lignes.length
+
   return (
     <div style={{ position: 'fixed', top: 0, right: 0, width: 480, maxWidth: '95vw', height: '100vh', background: '#fff', zIndex: 100, boxShadow: '-4px 0 24px rgba(0,0,0,0.1)', display: 'flex', flexDirection: 'column' }}>
       <div style={{ padding: '14px 18px', borderBottom: '0.5px solid #e2e0d8', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
@@ -690,7 +708,7 @@ Réponds UNIQUEMENT en JSON : { "doublons": [{ "nouveau": "nom", "existant_id": 
               <input type="file" accept=".xlsx,.csv,.pdf" style={{ display: 'none' }} onChange={e => e.target.files[0] && setFichier(e.target.files[0])} />
             </label>
             <div style={{ background: '#f8f7f4', borderRadius: 8, padding: '8px 12px', fontSize: 11, color: '#888780' }}>
-              💡 Peu importe le format — l'IA détecte automatiquement les colonnes utiles et ignore le reste. Les PDF sont lus directement par l'IA.
+              💡 Peu importe le format — l'IA détecte automatiquement les colonnes utiles. Les PDF sont lus directement par l'IA en un seul appel.
             </div>
             <div style={{ background: '#f8f7f4', borderRadius: 8, padding: '10px 12px' }}>
               <label style={{ fontSize: 11, fontWeight: 500, color: '#5f5e5a', marginBottom: 6, display: 'block' }}>
@@ -719,7 +737,7 @@ Réponds UNIQUEMENT en JSON : { "doublons": [{ "nouveau": "nom", "existant_id": 
               </div>
             )}
             <div style={{ fontSize: 11, color: '#5f5e5a', background: '#eeedfe', borderRadius: 8, padding: '8px 11px' }}>
-              Vérifiez que "Désignation (nom)" est bien assigné à la colonne des noms de produits. Vous pouvez corriger manuellement.
+              {estPDF ? '📄 Aperçu du 1er produit extrait — vérifiez que le mapping est correct.' : 'Vérifiez que "Désignation (nom)" est bien assigné à la colonne des noms de produits.'}
             </div>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
               <thead>
@@ -728,14 +746,18 @@ Réponds UNIQUEMENT en JSON : { "doublons": [{ "nouveau": "nom", "existant_id": 
                 ))}</tr>
               </thead>
               <tbody>
-                {colonnes.map(col => {
+                {colonnes.map((col, colIdx) => {
                   const mapped = mapping[col] || 'ignorer'
                   const conf = iaAnalyse?.confiance?.[col] || 0
                   const isIA = conf > 0
+                  const valeurExemple = lignes[0]?.[colIdx]
                   return (
                     <tr key={col}>
                       <td style={{ padding: '6px 7px', borderBottom: '0.5px solid #f1efe8' }}>
                         <span style={{ fontFamily: 'monospace', fontSize: 10, background: '#f8f7f4', padding: '2px 6px', borderRadius: 4, color: '#5f5e5a' }}>{col}</span>
+                        {valeurExemple !== undefined && valeurExemple !== '' && (
+                          <div style={{ fontSize: 9, color: '#b4b2a9', marginTop: 2 }}>ex: {String(valeurExemple).slice(0, 30)}</div>
+                        )}
                         {isIA && <div style={{ height: 2, borderRadius: 2, marginTop: 3, background: conf >= 85 ? '#27500a' : '#fac775', width: conf + '%' }} />}
                       </td>
                       <td style={{ padding: '6px 4px', color: '#b4b2a9', fontSize: 10, textAlign: 'center' }}>→</td>
@@ -823,7 +845,7 @@ Réponds UNIQUEMENT en JSON : { "doublons": [{ "nouveau": "nom", "existant_id": 
         {step === 5 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 7 }}>
-              {[[lignes.length, 'Nouveaux', '#27500a', '#eaf3de'], [doublons.filter(d => d.choix === 'maj').length, 'Mises à jour', '#854f0b', '#faeeda'], [lignes.length, 'Total', '#2c2c2a', '#f8f7f4']].map(([v, l, c, bg]) => (
+              {[[nbLignesTotal, 'Nouveaux', '#27500a', '#eaf3de'], [doublons.filter(d => d.choix === 'maj').length, 'Mises à jour', '#854f0b', '#faeeda'], [nbLignesTotal, 'Total', '#2c2c2a', '#f8f7f4']].map(([v, l, c, bg]) => (
                 <div key={l} style={{ background: bg, borderRadius: 8, padding: 9, textAlign: 'center' }}>
                   <div style={{ fontSize: 20, fontWeight: 500, color: c }}>{v}</div>
                   <div style={{ fontSize: 9, color: '#888780', marginTop: 2, textTransform: 'uppercase', letterSpacing: '0.3px' }}>{l}</div>
@@ -835,7 +857,7 @@ Réponds UNIQUEMENT en JSON : { "doublons": [{ "nouveau": "nom", "existant_id": 
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 8, borderTop: '0.5px solid #e2e0d8' }}>
               <button onClick={() => setStep(doublons.length > 0 ? 4 : 3)} style={btnStyle}>← Retour</button>
-              <button onClick={confirmerImport} style={btnPrimary}>✓ Confirmer l'import ({lignes.length} ligne{lignes.length !== 1 ? 's' : ''})</button>
+              <button onClick={confirmerImport} style={btnPrimary}>✓ Confirmer l'import ({nbLignesTotal} ligne{nbLignesTotal !== 1 ? 's' : ''})</button>
             </div>
           </div>
         )}
@@ -964,7 +986,7 @@ export default function MercurialePage() {
         <td style={{ padding: '9px 10px', fontSize: 11, color: '#888780', fontFamily: 'monospace' }}>{p.reference || '—'}</td>
         <td style={{ padding: '9px 10px', fontWeight: 500 }}>
           {p.nom}
-          {p.is_new && (
+          {p.is_new && p.created_at && (new Date() - new Date(p.created_at)) < 86400000 && (
             <span onClick={() => retirerBadgeNouveau(p)} title="Cliquer pour retirer le badge"
               style={{ fontSize: 9, padding: '1px 5px', borderRadius: 6, background: '#eaf3de', color: '#27500a', fontWeight: 500, marginLeft: 5, cursor: 'pointer' }}>
               Nouveau ×
