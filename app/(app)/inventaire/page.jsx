@@ -113,7 +113,7 @@ export default function InventairePage() {
       const [{ data: prods, error: eP }, { data: recs, error: eR }, { data: conts }, { data: histo }, { data: membres }] = await Promise.all([
         supabase.from('produits').select('id, nom, prix_ht, fournisseurs(nom)').eq('etablissement_id', etabId).eq('actif', true).order('nom'),
         supabase.from('recettes').select('id, nom').eq('etablissement_id', etabId).order('nom'),
-        supabase.from('contenants').select('*').order('nom'),
+       supabase.from('contenants').select('*').eq('etablissement_id', etabId).order('nom'),
         supabase.from('inventaires').select('*').eq('etablissement_id', etabId).order('date_inventaire', { ascending: false }),
         supabase.from('equipe').select('id, nom, email').eq('etablissement_id', etabId).order('nom')
       ])
@@ -236,7 +236,7 @@ export default function InventairePage() {
 
   const ajouterContenant = async () => {
     if (!formContenant.nom || !formContenant.poids_vide) return
-    await supabase.from('contenants').insert([{ nom: formContenant.nom, poids_vide: parseFloat(formContenant.poids_vide) }])
+    await supabase.from('contenants').insert([{ nom: formContenant.nom, poids_vide: parseFloat(formContenant.poids_vide), etablissement_id: etabId }])
     setModalContenant(false); setFormContenant({ nom: '', poids_vide: '' }); chargerDonnees(); showToast('Contenant ajouté !')
   }
 
