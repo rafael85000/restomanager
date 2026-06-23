@@ -46,6 +46,13 @@ export async function proxy(request) {
   }
 
   if (user && !isPublicPage && !isEtablissementsPage) {
+  const { data: compteExterne } = await supabase
+    .from('comptes_externes')
+    .select('id')
+    .eq('user_id', user.id)
+    .single()
+
+  if (compteExterne) return response
     const { count: nbEtabs } = await supabase
       .from('etablissements')
       .select('*', { count: 'exact', head: true })

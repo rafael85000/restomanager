@@ -107,7 +107,11 @@ export default function SelectUserPage() {
         await supabase.auth.signOut()
         return
       }
-      localStorage.setItem('membre_actif', JSON.stringify({
+      // Set l'établissement actif avec le premier établissement autorisé
+const premierEtab = (compteExterne.etablissements_ids || [])[0]
+if (premierEtab) localStorage.setItem('etablissement_actif', premierEtab)
+
+localStorage.setItem('membre_actif', JSON.stringify({
         id: userId, nom: compteExterne.nom, role: 'Accès externe',
         permissions: compteExterne.permissions || [], type: 'externe', ts: Date.now()
       }))

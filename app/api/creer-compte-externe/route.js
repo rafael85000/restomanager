@@ -20,7 +20,7 @@ export async function POST(request) {
       email,
       password,
       email_confirm: true, // Pas besoin de confirmer l'email
-      user_metadata: { nom }
+user_metadata: { nom, is_external: 'true' }
     })
 
     if (authError) {

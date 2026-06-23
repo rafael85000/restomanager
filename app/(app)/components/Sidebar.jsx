@@ -35,6 +35,7 @@ export default function Sidebar({ membreActif }) {
 
   const permissions = membreActif?.permissions || []
   const aTout = permissions.includes('tout')
+  const membre = membreActif
 
   const itemsVisibles = TOUTES_PERMISSIONS.filter(item =>
     aTout || permissions.includes(item.key)
@@ -55,10 +56,32 @@ export default function Sidebar({ membreActif }) {
   useEffect(() => { chargerEtablissements() }, [])
 
   async function chargerEtablissements() {
-    const { data: userData } = await supabase.auth.getUser()
-    const userId = userData?.user?.id
-    if (!userId) return
-    const { data } = await supabase.from('etablissements').select('*').eq('compte_client_id', userId).order('created_at')
+    const membreRaw = localStorage.getItem('membre_actif')
+    const membre = membreRaw ? JSON.parse(membreRaw) : null
+    
+    let data = []
+    if (membre?.type === 'externe') {
+      // Compte externe — charger les établissements autorisés
+      const { data: compteExterne } = await supabase
+        .from('comptes_externes')
+        .select('etablissements_ids')
+        .eq('user_id', membre.id)
+        .single()
+      if (compteExterne?.etablissements_ids?.length) {
+        const { data: etabs } = await supabase
+          .from('etablissements')
+          .select('*')
+          .in('id', compteExterne.etablissements_ids)
+          .order('created_at')
+        data = etabs || []
+      }
+    } else {
+      const { data: userData } = await supabase.auth.getUser()
+      const userId = userData?.user?.id
+      if (!userId) return
+      const { data: etabs } = await supabase.from('etablissements').select('*').eq('compte_client_id', userId).order('created_at')
+      data = etabs || []
+    }
     setEtablissements(data || [])
     const savedId = localStorage.getItem('etablissement_actif')
     const actif = data?.find(e => e.id === savedId) || data?.[0]
@@ -97,7 +120,7 @@ export default function Sidebar({ membreActif }) {
         </div>
 
         {/* Switcher établissement — seulement gérant */}
-        {(aTout) && (
+        {(aTout || membre?.type === 'externe') && (
           <div style={{ padding: '12px 16px', borderBottom: '0.5px solid #2c2b2f', position: 'relative' }}>
             <div onClick={() => setShowSwitcher(!showSwitcher)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '8px 10px', borderRadius: 8, background: '#2c2b2f' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
@@ -134,7 +157,7 @@ export default function Sidebar({ membreActif }) {
               {group.items.map(item => {
                 const active = pathname === item.href
                 return (
-                  <Link key={item.href} href={item.href} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 12px', borderRadius: 8, marginBottom: 1, fontSize: 13, fontWeight: active ? 500 : 400, color: active ? '#fff' : '#a8a6a0', background: active ? '#534ab7' : 'transparent', textDecoration: 'none' }}>
+                  <Link key={item.href} href={item.href} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '5px 12px', borderRadius: 8, marginBottom: 1, fontSize: 13, fontWeight: active ? 500 : 400, color: active ? '#fff' : '#a8a6a0', background: active ? '#534ab7' : 'transparent', textDecoration: 'none' }}>
                     <i className={`ti ${item.icon}`} style={{ fontSize: 16, color: active ? '#fff' : '#666460', flexShrink: 0 }} />
                     {item.label}
                   </Link>

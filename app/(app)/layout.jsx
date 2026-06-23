@@ -29,6 +29,12 @@ export default function AppLayout({ children }) {
     }
     const membre = JSON.parse(membreRaw)
     setMembreActif(membre)
+    // Bloquer compte externe sur /etablissements
+    if (membre.type === 'externe' && window.location.pathname === '/etablissements') {
+      router.push('/dashboard')
+      setLoading(false)
+      return
+    }
     setAccesComplet(true)
     setLoading(false)
   }, [])
