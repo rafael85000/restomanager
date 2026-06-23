@@ -189,23 +189,35 @@ export default function FichesPage() {
   }
 
   const calcCoutKgRecette = useCallback((ings) => {
-    const valides = ings.filter(i => Number(i.ordre) !== SEPARATEUR_MARKER && i.produit_id)
+    const valides = ings.filter(i => Number(i.ordre) !== SEPARATEUR_MARKER && (i.produit_id || i.recette_id_lie))
     const poids = valides.reduce((s, i) => s + Number(i.poids || 0), 0)
     const cout = valides.reduce((s, i) => {
-      const prod = produits.find(p => p.id === i.produit_id)
-      return s + Number(i.poids || 0) * Number(prod?.prix_ht || 0)
+      if (i.produit_id) {
+        const prod = produits.find(p => p.id === i.produit_id)
+        return s + Number(i.poids || 0) * Number(prod?.prix_ht || 0)
+      }
+      if (i.recette_id_lie) {
+        const sousRec = recettes.find(r => r.id === i.recette_id_lie)
+        const prixKgSous = sousRec ? calcCoutKgRecette(sousRec.recette_ingredients || []) : 0
+        return s + Number(i.poids || 0) * prixKgSous
+      }
+      return s
     }, 0)
     return poids > 0 ? cout / poids : 0
-  }, [produits])
+  }, [produits, recettes])
 
   const getPrixKg = (item) => {
     if (item.type === 'produit') { const p = produits.find(x => x.id === item.produit_id); return p ? Number(p.prix_ht) : 0 }
-    if (item.type === 'recette') { const r = recettes.find(x => x.id === item.recette_id); return r ? calcCoutKgRecette(r.recette_ingredients || []) : 0 }
+    if (item.type === 'recette') {
+      const id = item.recette_id || item.recette_id_lie
+      const r = recettes.find(x => x.id === id)
+      return r ? calcCoutKgRecette(r.recette_ingredients || []) : 0
+    }
     return 0
   }
   const getNom = (item) => {
     if (item.type === 'produit') return produits.find(x => x.id === item.produit_id)?.nom || ''
-    if (item.type === 'recette') return recettes.find(x => x.id === item.recette_id)?.nom || ''
+    if (item.type === 'recette') return recettes.find(x => x.id === (item.recette_id || item.recette_id_lie))?.nom || ''
     return ''
   }
 

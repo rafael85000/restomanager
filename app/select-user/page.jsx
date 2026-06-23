@@ -9,7 +9,7 @@ export default function SelectUserPage() {
   const [roles, setRoles] = useState([])
   const [etabNom, setEtabNom] = useState('')
   const [loading, setLoading] = useState(true)
-  const [etape, setEtape] = useState('liste') // liste | pin | gerant | externe
+  const [etape, setEtape] = useState('liste')
   const [membreSelectionne, setMembreSelectionne] = useState(null)
   const [pin, setPin] = useState('')
   const [pinErreur, setPinErreur] = useState('')
@@ -23,12 +23,7 @@ export default function SelectUserPage() {
   const pinRef = useRef(null)
 
   useEffect(() => {
-    const membreRaw = localStorage.getItem('membre_actif')
-    if (membreRaw) {
-      window.location.href = '/dashboard'
-    } else {
-      charger()
-    }
+    charger()
   }, [])
 
   useEffect(() => {
@@ -39,7 +34,6 @@ export default function SelectUserPage() {
     setLoading(true)
     const etabId = localStorage.getItem('etablissement_actif')
     if (!etabId) { setLoading(false); return }
-
     const [{ data: etab }, { data: mb }, { data: rl }] = await Promise.all([
       supabase.from('etablissements').select('nom').eq('id', etabId).single(),
       supabase.from('equipe').select('id, nom, role_id, actif').eq('etablissement_id', etabId).eq('actif', true).order('nom'),
@@ -65,20 +59,10 @@ export default function SelectUserPage() {
   const effacer = () => setPin(p => p.slice(0, -1))
 
   const validerPin = async (pinSaisi) => {
-    const { data: mb } = await supabase
-      .from('equipe').select('id, nom, role_id, pin').eq('id', membreSelectionne.id).single()
-
-    if (!mb?.pin || mb.pin !== pinSaisi) {
-      setPinErreur('Code incorrect'); setPin(''); return
-    }
-
-    const { data: role } = await supabase
-      .from('roles').select('nom, permissions').eq('id', mb.role_id).single()
-
-    localStorage.setItem('membre_actif', JSON.stringify({
-      id: mb.id, nom: mb.nom, role: role?.nom || '',
-      permissions: role?.permissions || [], ts: Date.now()
-    }))
+    const { data: mb } = await supabase.from('equipe').select('id, nom, role_id, pin').eq('id', membreSelectionne.id).single()
+    if (!mb?.pin || mb.pin !== pinSaisi) { setPinErreur('Code incorrect'); setPin(''); return }
+    const { data: role } = await supabase.from('roles').select('nom, permissions').eq('id', mb.role_id).single()
+    localStorage.setItem('membre_actif', JSON.stringify({ id: mb.id, nom: mb.nom, role: role?.nom || '', permissions: role?.permissions || [], ts: Date.now() }))
     window.location.href = '/dashboard'
   }
 
@@ -88,39 +72,14 @@ export default function SelectUserPage() {
     const { data, error } = await supabase.auth.signInWithPassword({ email: emailGerant, password: mdpGerant })
     setLoadingAuth(false)
     if (error) { setGerantErreur('Email ou mot de passe incorrect'); return }
-
-    // Vérifier si c'est un compte externe ou le gérant principal
     const userId = data.user.id
-    const { data: compteExterne } = await supabase
-      .from('comptes_externes')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('actif', true)
-      .single()
-
+    const { data: compteExterne } = await supabase.from('comptes_externes').select('*').eq('user_id', userId).eq('actif', true).single()
     if (compteExterne) {
-      // Compte externe — vérifier accès à l'établissement actif
-      const etabId = localStorage.getItem('etablissement_actif')
-      const etabsAutorisés = compteExterne.etablissements_ids || []
-      if (!etabsAutorisés.includes(etabId)) {
-        setGerantErreur("Vous n'avez pas accès à cet établissement")
-        await supabase.auth.signOut()
-        return
-      }
-      // Set l'établissement actif avec le premier établissement autorisé
-const premierEtab = (compteExterne.etablissements_ids || [])[0]
-if (premierEtab) localStorage.setItem('etablissement_actif', premierEtab)
-
-localStorage.setItem('membre_actif', JSON.stringify({
-        id: userId, nom: compteExterne.nom, role: 'Accès externe',
-        permissions: compteExterne.permissions || [], type: 'externe', ts: Date.now()
-      }))
+      const premierEtab = (compteExterne.etablissements_ids || [])[0]
+      if (premierEtab) localStorage.setItem('etablissement_actif', premierEtab)
+      localStorage.setItem('membre_actif', JSON.stringify({ id: userId, nom: compteExterne.nom, role: 'Accès externe', permissions: compteExterne.permissions || [], type: 'externe', ts: Date.now() }))
     } else {
-      // Gérant principal
-      localStorage.setItem('membre_actif', JSON.stringify({
-        id: 'gerant', nom: 'Gérant', role: 'Propriétaire',
-        permissions: ['tout'], ts: Date.now()
-      }))
+      localStorage.setItem('membre_actif', JSON.stringify({ id: 'gerant', nom: 'Gérant', role: 'Propriétaire', permissions: ['tout'], ts: Date.now() }))
     }
     window.location.href = '/dashboard'
   }
@@ -131,25 +90,21 @@ localStorage.setItem('membre_actif', JSON.stringify({
     const { data, error } = await supabase.auth.signInWithPassword({ email: emailExterne, password: mdpExterne })
     setLoadingAuth(false)
     if (error) { setExterneErreur('Email ou mot de passe incorrect'); return }
-
     const userId = data.user.id
-    const { data: compteExterne } = await supabase
-      .from('comptes_externes').select('*').eq('user_id', userId).eq('actif', true).single()
-
+    const { data: compteExterne } = await supabase.from('comptes_externes').select('*').eq('user_id', userId).eq('actif', true).single()
     if (!compteExterne) { setExterneErreur('Compte externe introuvable'); await supabase.auth.signOut(); return }
-
-    const etabId = localStorage.getItem('etablissement_actif')
-    const etabsAutorisés = compteExterne.etablissements_ids || []
-    if (!etabsAutorisés.includes(etabId)) {
-      setExterneErreur("Vous n'avez pas accès à cet établissement")
-      await supabase.auth.signOut(); return
-    }
-
-    localStorage.setItem('membre_actif', JSON.stringify({
-      id: userId, nom: compteExterne.nom, role: 'Accès externe',
-      permissions: compteExterne.permissions || [], type: 'externe', ts: Date.now()
-    }))
+    const premierEtab = (compteExterne.etablissements_ids || [])[0]
+    if (premierEtab) localStorage.setItem('etablissement_actif', premierEtab)
+    localStorage.setItem('membre_actif', JSON.stringify({ id: userId, nom: compteExterne.nom, role: 'Accès externe', permissions: compteExterne.permissions || [], type: 'externe', ts: Date.now() }))
     window.location.href = '/dashboard'
+  }
+
+  const deconnexion = async () => {
+    if (!window.confirm('Voulez-vous vraiment vous déconnecter complètement ?')) return
+    localStorage.removeItem('membre_actif')
+    localStorage.removeItem('etablissement_actif')
+    await supabase.auth.signOut()
+    window.location.href = '/auth'
   }
 
   const getRoleNom = (roleId) => roles.find(r => r.id === roleId)?.nom || ''
@@ -162,11 +117,13 @@ localStorage.setItem('membre_actif', JSON.stringify({
     </div>
   )
 
+  const inpStyle = { padding: '12px 14px', borderRadius: 8, border: '0.5px solid #3a3a3e', background: '#2c2b2f', color: '#fff', fontSize: 14, outline: 'none', width: '100%', boxSizing: 'border-box' }
+  const btnRetour = { background: 'none', border: 'none', color: '#666460', fontSize: 13, cursor: 'pointer' }
+
   return (
     <div style={{ minHeight: '100vh', background: '#1c1b1f', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}>
       <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css" />
 
-      {/* Logo */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 32 }}>
         <div style={{ width: 40, height: 40, background: '#534ab7', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <i className="ti ti-chef-hat" style={{ color: '#fff', fontSize: 20 }} />
@@ -177,7 +134,7 @@ localStorage.setItem('membre_actif', JSON.stringify({
         </div>
       </div>
 
-      {/* LISTE MEMBRES */}
+      {/* LISTE */}
       {etape === 'liste' && (
         <div style={{ width: '100%', maxWidth: 480 }}>
           <div style={{ fontSize: 15, color: '#a8a6a0', textAlign: 'center', marginBottom: 20 }}>Qui êtes-vous ?</div>
@@ -199,9 +156,7 @@ localStorage.setItem('membre_actif', JSON.stringify({
               ))}
             </div>
           )}
-
-          {/* Boutons connexion en bas */}
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
             <button onClick={() => { setEtape('gerant'); setGerantErreur('') }}
               style={{ background: 'none', border: '0.5px solid #3a3a3e', borderRadius: 8, padding: '8px 16px', fontSize: 12, color: '#666460', cursor: 'pointer' }}>
               <i className="ti ti-lock" style={{ marginRight: 5 }} />Connexion gérant
@@ -210,11 +165,15 @@ localStorage.setItem('membre_actif', JSON.stringify({
               style={{ background: 'none', border: '0.5px solid #3a3a3e', borderRadius: 8, padding: '8px 16px', fontSize: 12, color: '#666460', cursor: 'pointer' }}>
               <i className="ti ti-user-circle" style={{ marginRight: 5 }} />Connexion externe
             </button>
+            <button onClick={deconnexion}
+              style={{ background: 'none', border: '0.5px solid #3a3a3e', borderRadius: 8, padding: '8px 16px', fontSize: 12, color: '#a32d2d', cursor: 'pointer' }}>
+              <i className="ti ti-logout" style={{ marginRight: 5 }} />Se déconnecter
+            </button>
           </div>
         </div>
       )}
 
-      {/* ÉCRAN PIN */}
+      {/* PIN */}
       {etape === 'pin' && membreSelectionne && (
         <div style={{ width: '100%', maxWidth: 320, textAlign: 'center' }}>
           <div style={{ width: 64, height: 64, borderRadius: '50%', background: getRoleCouleur(membreSelectionne.role_id) + '33', border: `2px solid ${getRoleCouleur(membreSelectionne.role_id)}`, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px', fontSize: 24, fontWeight: 600, color: getRoleCouleur(membreSelectionne.role_id) }}>
@@ -239,60 +198,45 @@ localStorage.setItem('membre_actif', JSON.stringify({
               </button>
             ))}
           </div>
-          <button onClick={() => { setEtape('liste'); setPin(''); setPinErreur('') }}
-            style={{ background: 'none', border: 'none', color: '#666460', fontSize: 13, cursor: 'pointer' }}>
-            ← Retour
-          </button>
+          <button onClick={() => { setEtape('liste'); setPin(''); setPinErreur('') }} style={btnRetour}>← Retour</button>
         </div>
       )}
 
-      {/* ÉCRAN GÉRANT */}
+      {/* GÉRANT */}
       {etape === 'gerant' && (
         <div style={{ width: '100%', maxWidth: 360 }}>
           <div style={{ fontSize: 15, color: '#a8a6a0', textAlign: 'center', marginBottom: 24 }}>Connexion gérant</div>
           {gerantErreur && <div style={{ background: '#3a1a1a', border: '0.5px solid #e05858', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#e05858', marginBottom: 14 }}>{gerantErreur}</div>}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
-            <input type="email" placeholder="Email" value={emailGerant} onChange={e => setEmailGerant(e.target.value)}
-              style={{ padding: '12px 14px', borderRadius: 8, border: '0.5px solid #3a3a3e', background: '#2c2b2f', color: '#fff', fontSize: 14, outline: 'none' }} />
-            <input type="password" placeholder="Mot de passe" value={mdpGerant} onChange={e => setMdpGerant(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && connexionGerant()}
-              style={{ padding: '12px 14px', borderRadius: 8, border: '0.5px solid #3a3a3e', background: '#2c2b2f', color: '#fff', fontSize: 14, outline: 'none' }} />
+            <input type="email" placeholder="Email" value={emailGerant} onChange={e => setEmailGerant(e.target.value)} style={inpStyle} />
+            <input type="password" placeholder="Mot de passe" value={mdpGerant} onChange={e => setMdpGerant(e.target.value)} onKeyDown={e => e.key === 'Enter' && connexionGerant()} style={inpStyle} />
           </div>
           <button onClick={connexionGerant} disabled={loadingAuth}
             style={{ width: '100%', padding: 12, borderRadius: 8, border: 'none', background: '#534ab7', color: '#fff', fontSize: 14, fontWeight: 500, cursor: 'pointer', marginBottom: 12 }}>
             {loadingAuth ? 'Connexion…' : 'Se connecter'}
           </button>
           <div style={{ textAlign: 'center' }}>
-            <button onClick={() => { setEtape('liste'); setGerantErreur('') }}
-              style={{ background: 'none', border: 'none', color: '#666460', fontSize: 13, cursor: 'pointer' }}>
-              ← Retour
-            </button>
+            <button onClick={() => { setEtape('liste'); setGerantErreur('') }} style={btnRetour}>← Retour</button>
           </div>
         </div>
       )}
 
-      {/* ÉCRAN EXTERNE */}
+      {/* EXTERNE */}
       {etape === 'externe' && (
         <div style={{ width: '100%', maxWidth: 360 }}>
           <div style={{ fontSize: 15, color: '#a8a6a0', textAlign: 'center', marginBottom: 8 }}>Connexion externe</div>
           <div style={{ fontSize: 12, color: '#555450', textAlign: 'center', marginBottom: 24 }}>Comptable, consultant, partenaire…</div>
           {externeErreur && <div style={{ background: '#3a1a1a', border: '0.5px solid #e05858', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#e05858', marginBottom: 14 }}>{externeErreur}</div>}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
-            <input type="email" placeholder="Email" value={emailExterne} onChange={e => setEmailExterne(e.target.value)}
-              style={{ padding: '12px 14px', borderRadius: 8, border: '0.5px solid #3a3a3e', background: '#2c2b2f', color: '#fff', fontSize: 14, outline: 'none' }} />
-            <input type="password" placeholder="Mot de passe" value={mdpExterne} onChange={e => setMdpExterne(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && connexionExterne()}
-              style={{ padding: '12px 14px', borderRadius: 8, border: '0.5px solid #3a3a3e', background: '#2c2b2f', color: '#fff', fontSize: 14, outline: 'none' }} />
+            <input type="email" placeholder="Email" value={emailExterne} onChange={e => setEmailExterne(e.target.value)} style={inpStyle} />
+            <input type="password" placeholder="Mot de passe" value={mdpExterne} onChange={e => setMdpExterne(e.target.value)} onKeyDown={e => e.key === 'Enter' && connexionExterne()} style={inpStyle} />
           </div>
           <button onClick={connexionExterne} disabled={loadingAuth}
             style={{ width: '100%', padding: 12, borderRadius: 8, border: 'none', background: '#534ab7', color: '#fff', fontSize: 14, fontWeight: 500, cursor: 'pointer', marginBottom: 12 }}>
             {loadingAuth ? 'Connexion…' : 'Se connecter'}
           </button>
           <div style={{ textAlign: 'center' }}>
-            <button onClick={() => { setEtape('liste'); setExterneErreur('') }}
-              style={{ background: 'none', border: 'none', color: '#666460', fontSize: 13, cursor: 'pointer' }}>
-              ← Retour
-            </button>
+            <button onClick={() => { setEtape('liste'); setExterneErreur('') }} style={btnRetour}>← Retour</button>
           </div>
         </div>
       )}

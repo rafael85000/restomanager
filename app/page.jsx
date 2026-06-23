@@ -7,10 +7,13 @@ export default function Home() {
 
   useEffect(() => {
     const membreRaw = localStorage.getItem('membre_actif')
-    if (membreRaw) {
-      router.push('/dashboard')
-    } else {
+    const etabId = localStorage.getItem('etablissement_actif')
+    if (etabId) {
+      // Établissement connu → select-user (veille)
       router.push('/select-user')
+    } else {
+      // Pas de session du tout → auth
+      router.push('/auth')
     }
   }, [])
 

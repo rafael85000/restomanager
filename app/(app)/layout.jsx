@@ -1,12 +1,13 @@
 'use client'
 import { useEffect, useState, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
 import Sidebar from './components/Sidebar'
+import { useRouter, usePathname } from 'next/navigation'
 
-const INACTIVITE_MS = 5 * 60 * 1000
+const INACTIVITE_MS = 2 * 60 * 1000
 
 export default function AppLayout({ children }) {
   const router = useRouter()
+  const pathname = usePathname()
   const [accesComplet, setAccesComplet] = useState(false)
   const [loading, setLoading] = useState(true)
   const [membreActif, setMembreActif] = useState(null)
@@ -14,8 +15,7 @@ export default function AppLayout({ children }) {
   const resetTimer = useCallback(() => {
     if (typeof window === 'undefined') return
     clearTimeout(window.__inactiviteTimer)
-    window.__inactiviteTimer = setTimeout(() => {
-      localStorage.removeItem('membre_actif')
+   window.__inactiviteTimer = setTimeout(() => {
       router.push('/select-user')
     }, INACTIVITE_MS)
   }, [])
@@ -38,7 +38,37 @@ export default function AppLayout({ children }) {
     setAccesComplet(true)
     setLoading(false)
   }, [])
+useEffect(() => {
+    if (!membreActif) return
+    const permissions = membreActif.permissions || []
+    const aTout = permissions.includes('tout')
+    if (aTout) return
 
+    const ROUTE_PERMISSIONS = {
+      '/mercuriale': 'mercuriale',
+      '/fournisseurs': 'fournisseurs',
+      '/fiches': 'fiches-recettes',
+      '/recettes': 'fiches-techniques',
+      '/allergenes': 'allergenes',
+      '/saisonnalite': 'saisonnalite',
+      '/inventaire': 'inventaire',
+      '/couts': 'cout-de-revient',
+      '/commandes': 'bon-de-commande',
+      '/pertes': 'pertes-rendement',
+      '/dlc': 'suivi-dlc',
+      '/rapport': 'rapport-mensuel',
+      '/haccp': 'haccp',
+      '/etablissements': 'etablissement',
+      '/equipe': 'equipe',
+      '/compte': 'mon-compte',
+      '/abonnement': 'mon-abonnement',
+    }
+
+    const permRequise = ROUTE_PERMISSIONS[pathname]
+    if (permRequise && !permissions.includes(permRequise)) {
+      router.push('/select-user')
+    }
+  }, [pathname, membreActif])
   useEffect(() => {
     const events = ['mousemove', 'keydown', 'click', 'touchstart', 'scroll']
     events.forEach(e => window.addEventListener(e, resetTimer, { passive: true }))
