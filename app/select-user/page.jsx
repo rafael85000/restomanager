@@ -9,7 +9,7 @@ export default function SelectUserPage() {
   const [roles, setRoles] = useState([])
   const [etabNom, setEtabNom] = useState('')
   const [loading, setLoading] = useState(true)
-  const [etape, setEtape] = useState('liste') // liste | pin | gerant
+  const [etape, setEtape] = useState('liste') // liste | pin | gerant | externe
   const [membreSelectionne, setMembreSelectionne] = useState(null)
   const [pin, setPin] = useState('')
   const [pinErreur, setPinErreur] = useState('')
@@ -17,13 +17,15 @@ export default function SelectUserPage() {
   const [mdpGerant, setMdpGerant] = useState('')
   const [gerantErreur, setGerantErreur] = useState('')
   const [loadingAuth, setLoadingAuth] = useState(false)
+  const [emailExterne, setEmailExterne] = useState('')
+  const [mdpExterne, setMdpExterne] = useState('')
+  const [externeErreur, setExterneErreur] = useState('')
   const pinRef = useRef(null)
 
   useEffect(() => {
-    // Vérifier si session Supabase active → dashboard directement
-   const membreRaw = localStorage.getItem('membre_actif')
+    const membreRaw = localStorage.getItem('membre_actif')
     if (membreRaw) {
-      router.push('/dashboard')
+      window.location.href = '/dashboard'
     } else {
       charger()
     }
@@ -35,7 +37,6 @@ export default function SelectUserPage() {
 
   const charger = async () => {
     setLoading(true)
-    // Charger via etabId en localStorage
     const etabId = localStorage.getItem('etablissement_actif')
     if (!etabId) { setLoading(false); return }
 
@@ -51,10 +52,7 @@ export default function SelectUserPage() {
   }
 
   const selectionnerMembre = (m) => {
-    setMembreSelectionne(m)
-    setPin('')
-    setPinErreur('')
-    setEtape('pin')
+    setMembreSelectionne(m); setPin(''); setPinErreur(''); setEtape('pin')
   }
 
   const saisirChiffre = (c) => {
@@ -68,58 +66,90 @@ export default function SelectUserPage() {
 
   const validerPin = async (pinSaisi) => {
     const { data: mb } = await supabase
-      .from('equipe')
-      .select('id, nom, role_id, pin')
-      .eq('id', membreSelectionne.id)
-      .single()
+      .from('equipe').select('id, nom, role_id, pin').eq('id', membreSelectionne.id).single()
 
     if (!mb?.pin || mb.pin !== pinSaisi) {
-      setPinErreur('Code incorrect')
-      setPin('')
-      return
+      setPinErreur('Code incorrect'); setPin(''); return
     }
 
-    // Charger les permissions du rôle
     const { data: role } = await supabase
-      .from('roles')
-      .select('nom, permissions')
-      .eq('id', mb.role_id)
-      .single()
+      .from('roles').select('nom, permissions').eq('id', mb.role_id).single()
 
-    // Sauvegarder session membre en localStorage
     localStorage.setItem('membre_actif', JSON.stringify({
-      id: mb.id,
-      nom: mb.nom,
-      role: role?.nom || '',
-      permissions: role?.permissions || [],
-      ts: Date.now()
+      id: mb.id, nom: mb.nom, role: role?.nom || '',
+      permissions: role?.permissions || [], ts: Date.now()
     }))
-
-    router.push('/dashboard')
+    window.location.href = '/dashboard'
   }
 
   const connexionGerant = async () => {
     if (!emailGerant || !mdpGerant) { setGerantErreur('Remplissez tous les champs'); return }
-    setLoadingAuth(true)
-    setGerantErreur('')
-    const { error } = await supabase.auth.signInWithPassword({ email: emailGerant, password: mdpGerant })
+    setLoadingAuth(true); setGerantErreur('')
+    const { data, error } = await supabase.auth.signInWithPassword({ email: emailGerant, password: mdpGerant })
     setLoadingAuth(false)
     if (error) { setGerantErreur('Email ou mot de passe incorrect'); return }
 
-    // Session persistante — stocker accès gérant complet
+    // Vérifier si c'est un compte externe ou le gérant principal
+    const userId = data.user.id
+    const { data: compteExterne } = await supabase
+      .from('comptes_externes')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('actif', true)
+      .single()
+
+    if (compteExterne) {
+      // Compte externe — vérifier accès à l'établissement actif
+      const etabId = localStorage.getItem('etablissement_actif')
+      const etabsAutorisés = compteExterne.etablissements_ids || []
+      if (!etabsAutorisés.includes(etabId)) {
+        setGerantErreur("Vous n'avez pas accès à cet établissement")
+        await supabase.auth.signOut()
+        return
+      }
+      localStorage.setItem('membre_actif', JSON.stringify({
+        id: userId, nom: compteExterne.nom, role: 'Accès externe',
+        permissions: compteExterne.permissions || [], type: 'externe', ts: Date.now()
+      }))
+    } else {
+      // Gérant principal
+      localStorage.setItem('membre_actif', JSON.stringify({
+        id: 'gerant', nom: 'Gérant', role: 'Propriétaire',
+        permissions: ['tout'], ts: Date.now()
+      }))
+    }
+    window.location.href = '/dashboard'
+  }
+
+  const connexionExterne = async () => {
+    if (!emailExterne || !mdpExterne) { setExterneErreur('Remplissez tous les champs'); return }
+    setLoadingAuth(true); setExterneErreur('')
+    const { data, error } = await supabase.auth.signInWithPassword({ email: emailExterne, password: mdpExterne })
+    setLoadingAuth(false)
+    if (error) { setExterneErreur('Email ou mot de passe incorrect'); return }
+
+    const userId = data.user.id
+    const { data: compteExterne } = await supabase
+      .from('comptes_externes').select('*').eq('user_id', userId).eq('actif', true).single()
+
+    if (!compteExterne) { setExterneErreur('Compte externe introuvable'); await supabase.auth.signOut(); return }
+
+    const etabId = localStorage.getItem('etablissement_actif')
+    const etabsAutorisés = compteExterne.etablissements_ids || []
+    if (!etabsAutorisés.includes(etabId)) {
+      setExterneErreur("Vous n'avez pas accès à cet établissement")
+      await supabase.auth.signOut(); return
+    }
+
     localStorage.setItem('membre_actif', JSON.stringify({
-      id: 'gerant',
-      nom: 'Gérant',
-      role: 'Propriétaire',
-      permissions: ['tout'],
-      ts: Date.now()
+      id: userId, nom: compteExterne.nom, role: 'Accès externe',
+      permissions: compteExterne.permissions || [], type: 'externe', ts: Date.now()
     }))
-    router.push('/dashboard')
+    window.location.href = '/dashboard'
   }
 
   const getRoleNom = (roleId) => roles.find(r => r.id === roleId)?.nom || ''
   const getRoleCouleur = (roleId) => roles.find(r => r.id === roleId)?.couleur || '#534ab7'
-
   const getInitiales = (nom) => nom.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase()
 
   if (loading) return (
@@ -143,18 +173,17 @@ export default function SelectUserPage() {
         </div>
       </div>
 
-      {/* ÉCRAN LISTE */}
+      {/* LISTE MEMBRES */}
       {etape === 'liste' && (
         <div style={{ width: '100%', maxWidth: 480 }}>
           <div style={{ fontSize: 15, color: '#a8a6a0', textAlign: 'center', marginBottom: 20 }}>Qui êtes-vous ?</div>
-
           {membres.length === 0 ? (
-            <div style={{ textAlign: 'center', color: '#666460', fontSize: 13 }}>Aucun membre configuré.<br />Connectez-vous en tant que gérant.</div>
+            <div style={{ textAlign: 'center', color: '#666460', fontSize: 13, marginBottom: 24 }}>Aucun membre configuré.<br />Connectez-vous ci-dessous.</div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 12, marginBottom: 24 }}>
               {membres.map(m => (
                 <div key={m.id} onClick={() => selectionnerMembre(m)}
-                  style={{ background: '#2c2b2f', borderRadius: 12, padding: 20, cursor: 'pointer', textAlign: 'center', border: '0.5px solid #3a3a3e', transition: 'background 0.15s' }}
+                  style={{ background: '#2c2b2f', borderRadius: 12, padding: 20, cursor: 'pointer', textAlign: 'center', border: '0.5px solid #3a3a3e' }}
                   onMouseEnter={e => e.currentTarget.style.background = '#38373c'}
                   onMouseLeave={e => e.currentTarget.style.background = '#2c2b2f'}>
                   <div style={{ width: 52, height: 52, borderRadius: '50%', background: getRoleCouleur(m.role_id) + '33', border: `2px solid ${getRoleCouleur(m.role_id)}`, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 10px', fontSize: 18, fontWeight: 600, color: getRoleCouleur(m.role_id) }}>
@@ -167,11 +196,15 @@ export default function SelectUserPage() {
             </div>
           )}
 
-          {/* Bouton gérant discret */}
-          <div style={{ textAlign: 'center' }}>
+          {/* Boutons connexion en bas */}
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
             <button onClick={() => { setEtape('gerant'); setGerantErreur('') }}
               style={{ background: 'none', border: '0.5px solid #3a3a3e', borderRadius: 8, padding: '8px 16px', fontSize: 12, color: '#666460', cursor: 'pointer' }}>
               <i className="ti ti-lock" style={{ marginRight: 5 }} />Connexion gérant
+            </button>
+            <button onClick={() => { setEtape('externe'); setExterneErreur('') }}
+              style={{ background: 'none', border: '0.5px solid #3a3a3e', borderRadius: 8, padding: '8px 16px', fontSize: 12, color: '#666460', cursor: 'pointer' }}>
+              <i className="ti ti-user-circle" style={{ marginRight: 5 }} />Connexion externe
             </button>
           </div>
         </div>
@@ -185,29 +218,23 @@ export default function SelectUserPage() {
           </div>
           <div style={{ fontSize: 16, fontWeight: 500, color: '#fff', marginBottom: 4 }}>{membreSelectionne.nom}</div>
           <div style={{ fontSize: 12, color: '#666460', marginBottom: 28 }}>{getRoleNom(membreSelectionne.role_id)}</div>
-
-          {/* Points PIN */}
           <div style={{ display: 'flex', justifyContent: 'center', gap: 14, marginBottom: 28 }}>
             {[0,1,2,3].map(i => (
               <div key={i} style={{ width: 14, height: 14, borderRadius: '50%', background: i < pin.length ? '#534ab7' : '#3a3a3e', transition: 'background 0.15s' }} />
             ))}
           </div>
-
           {pinErreur && <div style={{ fontSize: 12, color: '#e05858', marginBottom: 16 }}>{pinErreur}</div>}
-
-          {/* Pavé numérique */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
             {[1,2,3,4,5,6,7,8,9,'',0,'⌫'].map((c, i) => (
               <button key={i} onClick={() => c === '⌫' ? effacer() : c !== '' ? saisirChiffre(String(c)) : null}
                 disabled={c === ''}
-                style={{ height: 56, borderRadius: 10, border: 'none', background: c === '' ? 'transparent' : c === '⌫' ? '#2c2b2f' : '#2c2b2f', color: '#fff', fontSize: c === '⌫' ? 20 : 22, fontWeight: 500, cursor: c === '' ? 'default' : 'pointer', opacity: c === '' ? 0 : 1, transition: 'background 0.1s' }}
+                style={{ height: 56, borderRadius: 10, border: 'none', background: c === '' ? 'transparent' : '#2c2b2f', color: '#fff', fontSize: c === '⌫' ? 20 : 22, fontWeight: 500, cursor: c === '' ? 'default' : 'pointer', opacity: c === '' ? 0 : 1 }}
                 onMouseEnter={e => { if (c !== '') e.currentTarget.style.background = '#38373c' }}
                 onMouseLeave={e => { if (c !== '') e.currentTarget.style.background = '#2c2b2f' }}>
                 {c}
               </button>
             ))}
           </div>
-
           <button onClick={() => { setEtape('liste'); setPin(''); setPinErreur('') }}
             style={{ background: 'none', border: 'none', color: '#666460', fontSize: 13, cursor: 'pointer' }}>
             ← Retour
@@ -219,11 +246,7 @@ export default function SelectUserPage() {
       {etape === 'gerant' && (
         <div style={{ width: '100%', maxWidth: 360 }}>
           <div style={{ fontSize: 15, color: '#a8a6a0', textAlign: 'center', marginBottom: 24 }}>Connexion gérant</div>
-
-          {gerantErreur && (
-            <div style={{ background: '#3a1a1a', border: '0.5px solid #e05858', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#e05858', marginBottom: 14 }}>{gerantErreur}</div>
-          )}
-
+          {gerantErreur && <div style={{ background: '#3a1a1a', border: '0.5px solid #e05858', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#e05858', marginBottom: 14 }}>{gerantErreur}</div>}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
             <input type="email" placeholder="Email" value={emailGerant} onChange={e => setEmailGerant(e.target.value)}
               style={{ padding: '12px 14px', borderRadius: 8, border: '0.5px solid #3a3a3e', background: '#2c2b2f', color: '#fff', fontSize: 14, outline: 'none' }} />
@@ -231,14 +254,38 @@ export default function SelectUserPage() {
               onKeyDown={e => e.key === 'Enter' && connexionGerant()}
               style={{ padding: '12px 14px', borderRadius: 8, border: '0.5px solid #3a3a3e', background: '#2c2b2f', color: '#fff', fontSize: 14, outline: 'none' }} />
           </div>
-
           <button onClick={connexionGerant} disabled={loadingAuth}
-            style={{ width: '100%', padding: '12px', borderRadius: 8, border: 'none', background: '#534ab7', color: '#fff', fontSize: 14, fontWeight: 500, cursor: 'pointer', marginBottom: 12 }}>
+            style={{ width: '100%', padding: 12, borderRadius: 8, border: 'none', background: '#534ab7', color: '#fff', fontSize: 14, fontWeight: 500, cursor: 'pointer', marginBottom: 12 }}>
             {loadingAuth ? 'Connexion…' : 'Se connecter'}
           </button>
-
           <div style={{ textAlign: 'center' }}>
             <button onClick={() => { setEtape('liste'); setGerantErreur('') }}
+              style={{ background: 'none', border: 'none', color: '#666460', fontSize: 13, cursor: 'pointer' }}>
+              ← Retour
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ÉCRAN EXTERNE */}
+      {etape === 'externe' && (
+        <div style={{ width: '100%', maxWidth: 360 }}>
+          <div style={{ fontSize: 15, color: '#a8a6a0', textAlign: 'center', marginBottom: 8 }}>Connexion externe</div>
+          <div style={{ fontSize: 12, color: '#555450', textAlign: 'center', marginBottom: 24 }}>Comptable, consultant, partenaire…</div>
+          {externeErreur && <div style={{ background: '#3a1a1a', border: '0.5px solid #e05858', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#e05858', marginBottom: 14 }}>{externeErreur}</div>}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+            <input type="email" placeholder="Email" value={emailExterne} onChange={e => setEmailExterne(e.target.value)}
+              style={{ padding: '12px 14px', borderRadius: 8, border: '0.5px solid #3a3a3e', background: '#2c2b2f', color: '#fff', fontSize: 14, outline: 'none' }} />
+            <input type="password" placeholder="Mot de passe" value={mdpExterne} onChange={e => setMdpExterne(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && connexionExterne()}
+              style={{ padding: '12px 14px', borderRadius: 8, border: '0.5px solid #3a3a3e', background: '#2c2b2f', color: '#fff', fontSize: 14, outline: 'none' }} />
+          </div>
+          <button onClick={connexionExterne} disabled={loadingAuth}
+            style={{ width: '100%', padding: 12, borderRadius: 8, border: 'none', background: '#534ab7', color: '#fff', fontSize: 14, fontWeight: 500, cursor: 'pointer', marginBottom: 12 }}>
+            {loadingAuth ? 'Connexion…' : 'Se connecter'}
+          </button>
+          <div style={{ textAlign: 'center' }}>
+            <button onClick={() => { setEtape('liste'); setExterneErreur('') }}
               style={{ background: 'none', border: 'none', color: '#666460', fontSize: 13, cursor: 'pointer' }}>
               ← Retour
             </button>

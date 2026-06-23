@@ -26,6 +26,10 @@ export default function Auth() {
         setLoading(false);
         return;
       }
+      localStorage.setItem('membre_actif', JSON.stringify({
+        id: 'gerant', nom: nom || 'Gérant', role: 'Propriétaire',
+        permissions: ['tout'], ts: Date.now()
+      }));
       window.location.href = '/etablissements';
     } else {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
@@ -34,6 +38,22 @@ export default function Auth() {
         setLoading(false);
         return;
       }
+      const { data: etabs } = await supabase
+        .from('etablissements')
+        .select('id')
+        .eq('compte_client_id', data.user.id)
+        .order('created_at')
+        .limit(1);
+      if (etabs?.[0]) {
+        localStorage.setItem('etablissement_actif', etabs[0].id);
+      }
+      localStorage.setItem('membre_actif', JSON.stringify({
+        id: 'gerant',
+        nom: data.user.user_metadata?.nom || 'Gérant',
+        role: 'Propriétaire',
+        permissions: ['tout'],
+        ts: Date.now()
+      }));
       window.location.href = '/dashboard';
     }
   }
@@ -75,27 +95,22 @@ export default function Auth() {
               <input value={nom} onChange={e => setNom(e.target.value)} required style={{ width:'100%', padding:'10px 14px', borderRadius:'8px', border:'0.5px solid #d3d1c7', fontSize:'14px', outline:'none' }} placeholder="Rafael Colonnello" />
             </div>
           )}
-
           <div style={{ marginBottom:'14px' }}>
             <label style={{ fontSize:'13px', fontWeight:'500', color:'#5f5e5a', display:'block', marginBottom:'5px' }}>Adresse email</label>
             <input type="email" value={email} onChange={e => setEmail(e.target.value)} required style={{ width:'100%', padding:'10px 14px', borderRadius:'8px', border:'0.5px solid #d3d1c7', fontSize:'14px', outline:'none' }} placeholder="vous@exemple.fr" />
           </div>
-
           <div style={{ marginBottom:'14px' }}>
             <label style={{ fontSize:'13px', fontWeight:'500', color:'#5f5e5a', display:'block', marginBottom:'5px' }}>Mot de passe</label>
             <input type="password" value={password} onChange={e => setPassword(e.target.value)} required minLength={6} style={{ width:'100%', padding:'10px 14px', borderRadius:'8px', border:'0.5px solid #d3d1c7', fontSize:'14px', outline:'none' }} placeholder="••••••••" />
           </div>
-
           {error && (
             <div style={{ fontSize:'13px', color:'#a32d2d', background:'#fcebeb', padding:'10px 14px', borderRadius:'8px', marginBottom:'14px' }}>{error}</div>
           )}
-
           {mode === 'signup' && (
             <div style={{ fontSize:'12px', color:'#888780', marginBottom:'14px' }}>
               Vous pourrez créer votre établissement et choisir votre abonnement juste après.
             </div>
           )}
-
           <button type="submit" disabled={loading} style={{ width:'100%', padding:'12px', background:'#534ab7', color:'#fff', border:'none', borderRadius:'8px', fontSize:'15px', fontWeight:'500', cursor:'pointer' }}>
             {loading ? 'Chargement...' : mode === 'login' ? 'Se connecter' : 'Créer mon compte'}
           </button>
