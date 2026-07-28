@@ -29,6 +29,9 @@ const FORMATS_ETIQ = [
   {id:'f4',nom:'Zebra S',dim:'57×32mm',imprimante:'Zebra ZD'},
   {id:'f5',nom:'Zebra L',dim:'102×50mm',imprimante:'Zebra ZD'},
   {id:'f6',nom:'Dymo',dim:'89×36mm',imprimante:'Dymo LabelWriter'},
+  {id:'f7',nom:'Gprinter S',dim:'58×30mm',imprimante:'Gprinter GP-2120TF'},
+  {id:'f8',nom:'Gprinter M',dim:'58×40mm',imprimante:'Gprinter GP-2120TF'},
+  {id:'f9',nom:'Gprinter L',dim:'58×60mm',imprimante:'Gprinter GP-2120TF'},
 ]
 
 export default function HACCP() {
@@ -327,7 +330,7 @@ export default function HACCP() {
     iDoc.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Etiquette</title><style>')
     iDoc.write('* { box-sizing:border-box; margin:0; padding:0; }')
     iDoc.write('body { font-family:-apple-system,BlinkMacSystemFont,sans-serif; padding:8px; background:#fff; display:flex; flex-wrap:wrap; gap:8px; }')
-    iDoc.write('@page { size:' + format.dim.replace('x','mm ') + 'mm; margin:2mm; }')
+    iDoc.write('@page { size:' + format.dim.replace('×','mm ').replace('mm','') + 'mm; margin:2mm; }')
     iDoc.write('@media print { -webkit-print-color-adjust:exact!important; print-color-adjust:exact!important; }')
     iDoc.write('</style></head><body>' + copies + '</body></html>')
     iDoc.close()
