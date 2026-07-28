@@ -29,7 +29,7 @@ const FORMATS_ETIQ = [
   {id:'f4',nom:'Zebra S',dim:'57×32mm',imprimante:'Zebra ZD'},
   {id:'f5',nom:'Zebra L',dim:'102×50mm',imprimante:'Zebra ZD'},
   {id:'f6',nom:'Dymo',dim:'89×36mm',imprimante:'Dymo LabelWriter'},
-  {id:'f7',nom:'Gprinter S',dim:'58×30mm',imprimante:'Gprinter GP-2120TF'},
+  {id:'f7',nom:'Gprinter 55x30',dim:'55×30mm',imprimante:'Gprinter GP-2120TF'},
   {id:'f8',nom:'Gprinter M',dim:'58×40mm',imprimante:'Gprinter GP-2120TF'},
   {id:'f9',nom:'Gprinter L',dim:'58×60mm',imprimante:'Gprinter GP-2120TF'},
 ]
