@@ -1,5 +1,13 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
+
+const ALLERGENES_14 = [
+  {id:'a1',nom:'Gluten'},{id:'a2',nom:'Crustaces'},{id:'a3',nom:'Oeufs'},
+  {id:'a4',nom:'Poissons'},{id:'a5',nom:'Arachides'},{id:'a6',nom:'Soja'},
+  {id:'a7',nom:'Lait'},{id:'a8',nom:'Fruits a coque'},{id:'a9',nom:'Celeri'},
+  {id:'a10',nom:'Moutarde'},{id:'a11',nom:'Sesame'},{id:'a12',nom:'Sulfites'},
+  {id:'a13',nom:'Lupin'},{id:'a14',nom:'Mollusques'}
+]
 import { supabase } from '../../../lib/supabase'
 import { getEtablissementActif } from '../../../lib/etablissement'
 
@@ -23,15 +31,28 @@ function Modal({onClose,title,subtitle,children,footer,maxWidth=440}) {
 
 
 const FORMATS_ETIQ = [
-  {id:'f1',nom:'Standard',dim:'62×29mm',imprimante:'Brother QL'},
-  {id:'f2',nom:'Large',dim:'62×50mm',imprimante:'Brother QL'},
-  {id:'f3',nom:'Petite',dim:'29×19mm',imprimante:'Brother QL'},
-  {id:'f4',nom:'Zebra S',dim:'57×32mm',imprimante:'Zebra ZD'},
-  {id:'f5',nom:'Zebra L',dim:'102×50mm',imprimante:'Zebra ZD'},
-  {id:'f6',nom:'Dymo',dim:'89×36mm',imprimante:'Dymo LabelWriter'},
-  {id:'f7',nom:'Gprinter 55x30',dim:'55×30mm',imprimante:'Gprinter GP-2120TF'},
-  {id:'f8',nom:'Gprinter M',dim:'58×40mm',imprimante:'Gprinter GP-2120TF'},
-  {id:'f9',nom:'Gprinter L',dim:'58×60mm',imprimante:'Gprinter GP-2120TF'},
+  // Gprinter GP-2120TF
+  {id:'f7', nom:'Gprinter 55×30', dim:'55×30mm',   orient:'portrait',  imprimante:'Gprinter GP-2120TF'},
+  {id:'f8', nom:'Gprinter 58×40', dim:'58×40mm',   orient:'portrait',  imprimante:'Gprinter GP-2120TF'},
+  {id:'f9', nom:'Gprinter 58×60', dim:'58×60mm',   orient:'portrait',  imprimante:'Gprinter GP-2120TF'},
+  // Nelko PL80E
+  {id:'f10',nom:'Nelko 102×152',  dim:'102×152mm',  orient:'landscape', imprimante:'Nelko PL80E'},
+  {id:'f11',nom:'Nelko 102×76',   dim:'102×76mm',   orient:'landscape', imprimante:'Nelko PL80E'},
+  {id:'f12',nom:'Nelko 102×51',   dim:'102×51mm',   orient:'landscape', imprimante:'Nelko PL80E'},
+  // Brother QL
+  {id:'f1', nom:'Brother 62×29',  dim:'62×29mm',    orient:'portrait',  imprimante:'Brother QL-800'},
+  {id:'f2', nom:'Brother 62×50',  dim:'62×50mm',    orient:'portrait',  imprimante:'Brother QL-800'},
+  {id:'f3', nom:'Brother 29×19',  dim:'29×19mm',    orient:'portrait',  imprimante:'Brother QL-800'},
+  // Zebra ZD
+  {id:'f4', nom:'Zebra 57×32',    dim:'57×32mm',    orient:'portrait',  imprimante:'Zebra ZD421'},
+  {id:'f5', nom:'Zebra 102×50',   dim:'102×50mm',   orient:'landscape', imprimante:'Zebra ZD421'},
+  {id:'f6', nom:'Zebra 100×100',  dim:'100×100mm',  orient:'portrait',  imprimante:'Zebra ZD421'},
+  // Dymo
+  {id:'f13',nom:'Dymo 89×36',     dim:'89×36mm',    orient:'landscape', imprimante:'Dymo LabelWriter 450'},
+  {id:'f14',nom:'Dymo 57×32',     dim:'57×32mm',    orient:'portrait',  imprimante:'Dymo LabelWriter 450'},
+  // Avery / Universel
+  {id:'f15',nom:'Avery 70×37',    dim:'70×37mm',    orient:'landscape', imprimante:'Avery / Universel'},
+  {id:'f16',nom:'A4 (test)',       dim:'210×297mm',  orient:'portrait',  imprimante:'Imprimante A4'},
 ]
 
 export default function HACCP() {
@@ -67,7 +88,8 @@ export default function HACCP() {
   const [editModele,setEditModele] = useState(null)
   const [formEditModele,setFormEditModele] = useState({nom:'',dlc_jours:3,dlc_libre:''})
   const [formModele,setFormModele] = useState({nom:'',dlc_jours:3})
-  const [formEtiq,setFormEtiq] = useState({produit_nom:'',date_fabrication:new Date().toISOString().split('T')[0],jours_dlc:3,dlc_libre:'',format_id:'f1',nb_exemplaires:1})
+  const [formEtiq,setFormEtiq] = useState({produit_nom:'',date_fabrication:new Date().toISOString().split('T')[0],jours_dlc:3,dlc_libre:'',format_id:'f1',nb_exemplaires:1,poids:'',unite_poids:'g',lot_id:'',lot_numero:'',lot_recette:'',afficher_ingredients:false})
+  const [etiqIngredients,setEtiqIngredients] = useState([]) // [{nom, poids, allergenes:[]}]
   // Températures
   const [equipe,setEquipe] = useState([])
   const [tempTab,setTempTab] = useState('releves')
@@ -117,14 +139,17 @@ export default function HACCP() {
   const [modalTerminerTimer,setModalTerminerTimer] = useState(null)
   // Traçabilité
   const [tracaTab,setTracaTab] = useState('saisie')
-  const [formLot,setFormLot] = useState({numero_lot:'',produit_id:'',produit_nom:'',recette_id:'',date_production:new Date().toISOString().split('T')[0]})
-  const [photoCapturee,setPhotoCapturee] = useState(null) // base64 ou URL
+  const [formLot,setFormLot] = useState({numero_lot:'',date_production:new Date().toISOString().split('T')[0]})
+  const [lignesProduits,setLignesProduits] = useState([]) // [{type:'produit'|'recette'|'libre', id:'', nom:''}]
+  const [selectRecetteId,setSelectRecetteId] = useState('')
+  const [photosCapturees,setPhotosCapturees] = useState([]) // array de base64
   const [cameraActive,setCameraActive] = useState(false)
   const [cameraStream,setCameraStream] = useState(null)
   const videoRef = useRef(null)
   const canvasRef = useRef(null)
   const [uploadingPhoto,setUploadingPhoto] = useState(false)
-  const [modalViewPhoto,setModalViewPhoto] = useState(null) // URL to view
+  const [modalViewPhoto,setModalViewPhoto] = useState(null)
+  const [modalCarousel,setModalCarousel] = useState(null) // {urls:[], idx:0}
   const [searchLot,setSearchLot] = useState('')
   // Réception
   const [recepTab,setRecepTab] = useState('saisie')
@@ -144,7 +169,10 @@ export default function HACCP() {
   const [sendingRetour,setSendingRetour] = useState(false)
   // PMS
   const [modalDoc,setModalDoc] = useState(false)
-  const [formDoc,setFormDoc] = useState({nom:'',categorie:'',date_expiration:''})
+  const [formDoc,setFormDoc] = useState({nom:'',categorie:'',date_expiration:'',commentaire:'',responsable:'',categorie_autre:''})
+  const [pmsUploadFile,setPmsUploadFile] = useState(null)
+  const [pmsUploading,setPmsUploading] = useState(false)
+  const [modalDocDetail,setModalDocDetail] = useState(null) // document ouvert en detail
 
   const showToast=(m,t='ok')=>{ setToast({msg:m,type:t}); setTimeout(()=>setToast({msg:'',type:'ok'}),3000) }
 
@@ -216,7 +244,7 @@ export default function HACCP() {
       supabase.from('haccp_etiq_modeles').select('*').eq('etablissement_id',etabId).order('nom'),
       supabase.from('haccp_etiquettes').select('*').eq('etablissement_id',etabId).order('created_at',{ascending:false}).limit(15),
       supabase.from('haccp_cuissons').select('*').eq('etablissement_id',etabId).order('date_releve',{ascending:false}).limit(30),
-      supabase.from('haccp_lots').select('*,produits(nom),recettes(nom)').eq('etablissement_id',etabId).order('created_at',{ascending:false}),
+      supabase.from('haccp_lots').select('*,produits(nom),recettes(nom)').eq('etablissement_id',etabId).order('created_at',{ascending:false}).limit(100),
       supabase.from('haccp_receptions').select('*,fournisseurs(nom)').eq('etablissement_id',etabId).order('date_reception',{ascending:false}).limit(30),
       supabase.from('haccp_documents').select('*').eq('etablissement_id',etabId).order('date_expiration',{ascending:true}),
       supabase.from('haccp_nettoyage_log').select('*').eq('etablissement_id',etabId).gte('created_at',todayStr+'T00:00:00'),
@@ -287,6 +315,16 @@ export default function HACCP() {
     charger(); showToast('Enregistre !')
   }
 
+  const uploadDocPms = async (file) => {
+    if (!file) return null
+    const ext = file.name.split('.').pop()
+    const fname = 'pms/'+etabId+'/'+Date.now()+'.'+ext
+    const {error} = await supabase.storage.from('tracabilite').upload(fname, file, {upsert:true})
+    if (error) { showToast('Erreur upload: '+error.message,'err'); return null }
+    const {data} = supabase.storage.from('tracabilite').getPublicUrl(fname)
+    return data.publicUrl
+  }
+
   const ajouterModeleEtiq = async () => {
     if (!formModele.nom) { showToast('Saisissez un nom','err'); return }
     const {error} = await supabase.from('haccp_etiq_modeles').insert({nom:formModele.nom, dlc_jours:parseInt(formModele.dlc_jours), etablissement_id:etabId})
@@ -302,42 +340,170 @@ export default function HACCP() {
     if (!formEtiq.produit_nom) { showToast('Saisissez un nom','err'); return }
     const dlc = formEtiq.dlc_libre || dlcDate(formEtiq.date_fabrication, formEtiq.jours_dlc)
     const format = FORMATS_ETIQ.find(f=>f.id===formEtiq.format_id) || FORMATS_ETIQ[0]
-    const fmt_nom = format.nom + ' ' + format.dim
     const nb = formEtiq.nb_exemplaires || 1
-    const fabFr = new Date(formEtiq.date_fabrication).toLocaleDateString('fr-FR')
-    const dlcFr = new Date(dlc).toLocaleDateString('fr-FR')
+    const fabFr = new Date(formEtiq.date_fabrication+'T12:00:00').toLocaleDateString('fr-FR')
+    const dlcFr = new Date(dlc+'T12:00:00').toLocaleDateString('fr-FR')
+    const poids = formEtiq.poids ? formEtiq.poids+' '+(formEtiq.unite_poids||'g') : null
+    const lotNum = formEtiq.lot_numero || ''
+    const lotRecette = formEtiq.lot_recette || ''
+    // Ingrédients triés par poids décroissant avec allergènes en gras
+    const ingList = (formEtiq.afficher_ingredients && etiqIngredients.length>0)
+      ? [...etiqIngredients].sort((a,b)=>(parseFloat(b.poids)||0)-(parseFloat(a.poids)||0))
+      : []
 
-    // Save to DB
-    await supabase.from('haccp_etiquettes').insert([{produit_nom:formEtiq.produit_nom,date_fabrication:formEtiq.date_fabrication,date_dlc:dlc,etablissement_id:etabId,responsable:userConnecte,format_nom:fmt_nom,nb_exemplaires:nb}])
+    const dimMatch = (format.dim||'').match(/([0-9.]+)[xX]([0-9.]+)/) || (format.dim||'').match(/([0-9.]+).([0-9.]+)/)
+    const w1 = dimMatch ? parseFloat(dimMatch[1]) : 62
+    const h1 = dimMatch ? parseFloat(dimMatch[2]) : 29
+    const docW = Math.max(w1,h1)
+    const docH = Math.min(w1,h1)
+    const orientation = docW >= docH ? 'landscape' : 'portrait'
+
+    await supabase.from('haccp_etiquettes').insert([{produit_nom:formEtiq.produit_nom,date_fabrication:formEtiq.date_fabrication,date_dlc:dlc,etablissement_id:etabId,responsable:userConnecte,format_nom:format.nom+' '+format.dim,nb_exemplaires:nb}])
     await supabase.from('dlc_produits').insert([{nom:formEtiq.produit_nom,type:'preparation',date_ouverture:formEtiq.date_fabrication,date_dlc:dlc,statut:'ok',etablissement_id:etabId}])
 
-    // Open print window with nb copies
-    const etiqHTML = '<div style="border:1.5px solid #2c2c2a;border-radius:4px;overflow:hidden;width:220px;font-family:-apple-system,BlinkMacSystemFont,sans-serif;margin-bottom:8px">' +
-      '<div style="background:#2c2c2a;padding:8px 12px"><div style="color:#fff;font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:0.5px">' + formEtiq.produit_nom + '</div></div>' +
-      '<div style="padding:10px 12px">' +
-        '<div style="display:flex;align-items:baseline;gap:6px;margin-bottom:5px"><span style="font-size:9px;font-weight:600;color:#888780;text-transform:uppercase;width:70px;flex-shrink:0">Fabriqué le</span><span style="font-size:12px;font-weight:500;color:#2c2c2a">' + fabFr + '</span></div>' +
-        '<div style="display:flex;align-items:baseline;gap:6px"><span style="font-size:9px;font-weight:600;color:#888780;text-transform:uppercase;width:70px;flex-shrink:0">DLC</span><span style="font-size:15px;font-weight:700;color:#a32d2d">' + dlcFr + '</span></div>' +
-      '</div>' +
-      '<div style="background:#f8f7f4;border-top:0.5px solid #e2e0d8;padding:4px 12px;font-size:9px;color:#888780;display:flex;justify-content:space-between"><span>' + format.dim + '</span><span>' + format.imprimante + '</span></div>' +
-    '</div>'
-    const copies = Array(nb).fill(etiqHTML).join('')
-    // Print via iframe to avoid popup blocker
-    const iframe = document.createElement('iframe')
-    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:210mm;height:297mm;border:none'
-    document.body.appendChild(iframe)
-    const iDoc = iframe.contentDocument || iframe.contentWindow.document
-    iDoc.open()
-    iDoc.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Etiquette</title><style>')
-    iDoc.write('* { box-sizing:border-box; margin:0; padding:0; }')
-    iDoc.write('body { font-family:-apple-system,BlinkMacSystemFont,sans-serif; padding:8px; background:#fff; display:flex; flex-wrap:wrap; gap:8px; }')
-    iDoc.write('@page { size:' + format.dim.replace('×','mm ').replace('mm','') + 'mm; margin:2mm; }')
-    iDoc.write('@media print { -webkit-print-color-adjust:exact!important; print-color-adjust:exact!important; }')
-    iDoc.write('</style></head><body>' + copies + '</body></html>')
-    iDoc.close()
-    setTimeout(()=>{ iframe.contentWindow.focus(); iframe.contentWindow.print(); setTimeout(()=>document.body.removeChild(iframe),1000) },300)
+    try {
+      const {default:jsPDF} = await import('jspdf')
+      const doc = new jsPDF({ orientation, unit:'mm', format:[docW, docH] })
+      const toP = mm => mm * 2.835
 
-    showToast('Impression lancée (' + nb + ' exemplaire(s)) !')
-    setFormEtiq(prev=>({...prev,produit_nom:'',date_fabrication:new Date().toISOString().split('T')[0],jours_dlc:3,dlc_libre:'',nb_exemplaires:1}))
+      // MÊMES calculs que la prévisualisation
+      const headerH = docH * 0.28
+      const footerH = Math.max(3, docH * 0.06)
+      const bodyH   = docH - headerH - footerH
+      const padH    = Math.max(2, Math.min(5, docW * 0.04))
+
+      const lBase = Math.max(2, Math.min(5, docH * 0.07))
+      const dBase = Math.max(5, Math.min(12, docH * 0.13))
+      const dlcBase = Math.max(8, Math.min(22, docH * 0.20))
+      const pBase = Math.max(6, Math.min(18, docH * 0.16))
+      const gBase = Math.max(1.5, Math.min(4, docH * 0.04))
+
+      const hasPoids = !!poids
+      const hasLot = !!lotNum
+      const hasIng = ingList.length>0
+      const needed = lBase+dBase*1.2 + gBase + lBase+dlcBase*1.2 + (hasPoids?gBase*2+lBase+pBase*1.2:0) + (hasLot?gBase*2+lBase+dBase*1.2:0) + (hasIng?gBase*2+lBase+Math.min(4,lBase*0.8)*3:0)
+      const asc = Math.min(1.0, (bodyH * 0.72) / needed)
+
+      const lMm = lBase * asc
+      const dMm = dBase * asc
+      const dlcMm = dlcBase * asc
+      const pMm = pBase * asc
+      const gMm = gBase * asc
+
+      // Taille titre
+      const titleMm = Math.min(16, Math.max(5, (docW * 0.85) / Math.max(formEtiq.produit_nom.length * 0.55, 3)))
+
+      for (let i=0; i<nb; i++) {
+        if (i>0) doc.addPage([docW, docH], orientation)
+
+        // HEADER NOIR
+        doc.setFillColor(44,44,42)
+        doc.rect(0,0,docW,headerH,'F')
+        doc.setTextColor(255,255,255)
+        doc.setFont('helvetica','bold')
+        doc.setFontSize(toP(titleMm))
+        const nomLines = doc.splitTextToSize(formEtiq.produit_nom.toUpperCase(), docW-padH*2)
+        const lineH = titleMm*1.25
+        const sy = headerH/2 - (nomLines.length-1)*lineH/2 + titleMm*0.35
+        nomLines.forEach((l,li)=>doc.text(l, docW/2, sy+li*lineH, {align:'center'}))
+
+        // CENTRAGE VERTICAL du corps
+        const totalH =
+          lMm + dMm*1.2 + gMm +
+          lMm + dlcMm*1.2 +
+          (hasPoids ? gMm*2 + lMm + pMm*1.2 : 0) +
+          (hasLot ? gMm*2 + lMm + dMm*1.2 : 0) +
+          (ingList.length>0 ? gMm*1.5 + lMm*0.8 + lMm*0.9 + Math.min(3.5,docH*0.04)*1.4*3 : 0)
+        let y = headerH + (bodyH - totalH)/2 + lMm
+
+        // FABRIQUE LE
+        doc.setFontSize(toP(lMm)); doc.setFont('helvetica','bold'); doc.setTextColor(136,135,128)
+        doc.text('FABRIQUE LE', docW/2, y, {align:'center'})
+        y += lMm*0.8
+        doc.setFontSize(toP(dMm)); doc.setFont('helvetica','bold'); doc.setTextColor(26,26,26)
+        doc.text(fabFr, docW/2, y+dMm*0.75, {align:'center'})
+        y += dMm*1.1 + gMm + lMm
+
+        // DLC
+        doc.setFontSize(toP(lMm)); doc.setFont('helvetica','bold'); doc.setTextColor(136,135,128)
+        doc.text('DLC', docW/2, y, {align:'center'})
+        y += lMm*0.8
+        doc.setFontSize(toP(dlcMm)); doc.setFont('helvetica','bold'); doc.setTextColor(180,30,30)
+        doc.text(dlcFr, docW/2, y+dlcMm*0.75, {align:'center'})
+        y += dlcMm*1.1
+
+        // POIDS NET
+        if (hasPoids) {
+          y += gMm*2
+          doc.setDrawColor(220,220,220); doc.line(padH,y,docW-padH,y)
+          y += gMm + lMm
+          doc.setFontSize(toP(lMm)); doc.setFont('helvetica','bold'); doc.setTextColor(136,135,128)
+          doc.text('POIDS NET', docW/2, y, {align:'center'})
+          y += lMm*0.8
+          doc.setFontSize(toP(pMm)); doc.setFont('helvetica','bold'); doc.setTextColor(26,26,26)
+          doc.text(poids, docW/2, y+pMm*0.75, {align:'center'})
+          y += pMm*1.1
+        }
+
+        // LOT
+        if (hasLot) {
+          y += gMm*2
+          doc.setDrawColor(220,220,220); doc.line(padH,y,docW-padH,y)
+          y += gMm + lMm
+          doc.setFontSize(toP(lMm)); doc.setFont('helvetica','bold'); doc.setTextColor(136,135,128)
+          doc.text('LOT', docW/2, y, {align:'center'})
+          y += lMm*0.8
+          doc.setFontSize(toP(dMm)); doc.setFont('helvetica','bold'); doc.setTextColor(83,74,183)
+          doc.text(lotNum, docW/2, y+dMm*0.75, {align:'center'})
+          // Pas d'affichage de la production sous le LOT
+        }
+
+        // INGRÉDIENTS
+        if (ingList.length > 0) {
+          y += gMm*2
+          doc.setDrawColor(220,220,220); doc.line(padH,y,docW-padH,y)
+          y += gMm + lMm*0.8
+          doc.setFontSize(toP(lMm*0.8)); doc.setFont('helvetica','bold'); doc.setTextColor(136,135,128)
+          doc.text('INGREDIENTS', docW/2, y, {align:'center'})
+          y += lMm
+          // Construire la liste
+          const ingMm = Math.max(2, Math.min(4, docH*0.045))
+          doc.setFontSize(toP(ingMm))
+          const ingText = ingList.map(ing=>{
+            const nm = ing.produits?.nom || ''
+            const isAlerg = (ing.produits?.allergenes||[]).length > 0
+            return isAlerg ? nm.toUpperCase() : nm
+          }).join(', ')
+          const ingLines = doc.splitTextToSize(ingText, docW-padH*2)
+          ingLines.forEach((l,li)=>{
+            doc.setTextColor(44,44,42)
+            doc.text(l, docW/2, y+ingMm*0.8+li*ingMm*1.3, {align:'center'})
+          })
+        }
+
+        // FOOTER
+        doc.setFillColor(245,245,245); doc.rect(0,docH-footerH,docW,footerH,'F')
+        doc.setDrawColor(220,220,220); doc.line(0,docH-footerH,docW,docH-footerH)
+        doc.setFontSize(toP(Math.max(2,lMm*0.8))); doc.setFont('helvetica','normal'); doc.setTextColor(170,170,170)
+        if(userConnecte) doc.text(userConnecte, padH, docH-0.8)
+        doc.text(format.dim, docW-padH, docH-0.8, {align:'right'})
+      }
+
+      const pdfBlob = doc.output('blob')
+      const pdfUrl = URL.createObjectURL(pdfBlob)
+      const iframe = document.createElement('iframe')
+      iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;border:none'
+      iframe.src = pdfUrl
+      document.body.appendChild(iframe)
+      iframe.onload = () => {
+        iframe.contentWindow.focus(); iframe.contentWindow.print()
+        setTimeout(()=>{ try{document.body.removeChild(iframe);URL.revokeObjectURL(pdfUrl)}catch(e){} },5000)
+      }
+      showToast('Impression lancee !')
+    } catch(e) { showToast('Erreur: '+e.message,'err'); console.error(e) }
+
+    setFormEtiq(prev=>({...prev,produit_nom:'',date_fabrication:new Date().toISOString().split('T')[0],jours_dlc:3,dlc_libre:'',nb_exemplaires:1,poids:'',unite_poids:'g',lot_id:'',lot_numero:'',lot_recette:'',afficher_ingredients:false}))
+    setEtiqIngredients([])
     charger()
   }
 
@@ -624,16 +790,15 @@ export default function HACCP() {
     cv.width=v.videoWidth; cv.height=v.videoHeight
     cv.getContext('2d').drawImage(v,0,0)
     const dataUrl=cv.toDataURL('image/jpeg',0.85)
-    setPhotoCapturee(dataUrl)
-    arreterCamera()
-    showToast('Photo capturee !')
+    setPhotosCapturees(prev=>{ const next=[...prev,dataUrl]; showToast('Photo '+next.length+' capturée !'); return next })
+    // Camera reste active
   }
 
-  const uploadPhoto = async (dataUrl) => {
+  const uploadPhoto = async (dataUrl, idx=0) => {
     if(!dataUrl) return null
     try {
       const blob=await fetch(dataUrl).then(r=>r.blob())
-      const fname='tracabilite/'+etabId+'/'+Date.now()+'.jpg'
+      const fname='tracabilite/'+etabId+'/'+Date.now()+'_'+idx+'_'+Math.random().toString(36).slice(2,7)+'.jpg'
       const {error}=await supabase.storage.from('tracabilite').upload(fname,blob,{contentType:'image/jpeg',upsert:true})
       if(error) { showToast('Erreur upload photo: '+error.message,'err'); return null }
       const {data}=supabase.storage.from('tracabilite').getPublicUrl(fname)
@@ -642,18 +807,48 @@ export default function HACCP() {
   }
 
   const creerLot = async () => {
-    if (!formLot.produit_id&&!formLot.produit_nom) { showToast('Sélectionnez ou saisissez un produit','err'); return }
     const num = formLot.numero_lot||genNumLot()
-    const p = produits.find(x=>x.id===formLot.produit_id)
+    // Pas de validation obligatoire — tout est optionnel
+    // Produits liés
+    const prodNom = lignesProduits.filter(l=>l.type==='produit').map(l=>l.nom).join(', ')
+    // Recette liée (première recette sélectionnée)
+    const recetteLigne = lignesProduits.find(l=>l.type==='recette')
+    const recetteId = recetteLigne?.id || null
+    const recetteNom = recetteLigne?.nom || null
+
+    // Upload toutes les photos avec index unique
     let photoUrl = null
-    if(photoCapturee) {
+    let photosUrlsJson = null
+    if(photosCapturees.length>0) {
       setUploadingPhoto(true)
-      photoUrl = await uploadPhoto(photoCapturee)
+      const urls = []
+      for(let i=0; i<photosCapturees.length; i++) {
+        const url = await uploadPhoto(photosCapturees[i], i)
+        if(url) urls.push(url)
+      }
       setUploadingPhoto(false)
+      photoUrl = urls[0]||null
+      photosUrlsJson = urls.length>0 ? JSON.stringify(urls) : null
+      showToast(urls.length+' photo(s) uploadée(s) !')
     }
-    await supabase.from('haccp_lots').insert([{numero_lot:num,produit_id:formLot.produit_id||null,produit_nom:p?p.nom:formLot.produit_nom,recette_id:formLot.recette_id||null,date_production:formLot.date_production,photo_url:photoUrl,etablissement_id:etabId}])
-    setFormLot({numero_lot:'',produit_id:'',produit_nom:'',recette_id:'',date_production:new Date().toISOString().split('T')[0]})
-    setPhotoCapturee(null)
+
+    const {error} = await supabase.from('haccp_lots').insert([{
+      numero_lot: num,
+      produit_nom: prodNom||recetteNom||null,
+      recette_id: recetteId,
+      date_production: formLot.date_production||null,
+      photo_url: photoUrl,
+      photos_urls: photosUrlsJson,
+      etablissement_id: etabId
+    }])
+
+    if(error) { showToast('Erreur: '+error.message,'err'); return }
+
+    setFormLot({numero_lot:'',date_production:new Date().toISOString().split('T')[0]})
+    setLignesProduits([])
+    setSelectRecetteId('')
+    setPhotosCapturees([])
+    arreterCamera()
     setTracaTab('lots'); charger(); showToast('Lot enregistré !')
   }
 
@@ -1296,6 +1491,70 @@ export default function HACCP() {
                   ))}
                 </div>
                 <div>
+                  <div style={{fontSize:12,color:'#888780',marginBottom:5}}>Lier à un lot <span style={{fontWeight:400,fontSize:11}}>(optionnel — affiche le n° sur l'étiquette)</span></div>
+                  <select value={formEtiq.lot_id||''} onChange={e=>{
+                    const lot=lots.find(l=>l.id===e.target.value)
+                    const recetteNom=lot?.recettes?.nom||''
+                    setFormEtiq({...formEtiq,lot_id:e.target.value,lot_numero:lot?lot.numero_lot:'',lot_recette:recetteNom})
+                    // Charger les ingrédients de la recette liée
+                    if(lot?.recette_id||lot?.recettes?.id) {
+                      const rid = lot.recette_id || lots.find(l=>l.id===e.target.value)?.recette_id
+                      if(rid) {
+                        supabase.from('recette_ingredients').select('*,produits(id,nom,allergenes)').eq('recette_id',rid).order('poids',{ascending:false})
+                          .then(({data})=>setEtiqIngredients(data||[]))
+                      }
+                    } else { setEtiqIngredients([]) }
+                  }} style={inp}>
+                    <option value="">Aucun lot</option>
+                    {lots.slice(0,50).map(l=>(
+                      <option key={l.id} value={l.id}>{l.numero_lot}{l.recettes?.nom?' — Production: '+l.recettes.nom:l.produit_nom?' — '+l.produit_nom:''}</option>
+                    ))}
+                  </select>
+                  {formEtiq.lot_id&&<div style={{fontSize:11,color:'#534ab7',marginTop:3,lineHeight:1.6}}>
+                    N° lot : <strong>{formEtiq.lot_numero}</strong>{formEtiq.lot_recette?' — '+formEtiq.lot_recette:''}
+                  </div>}
+                {formEtiq.lot_id&&etiqIngredients.length>0&&(
+                  <div style={{marginTop:8}}>
+                    <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:13,color:'#2c2c2a'}}>
+                      <input type="checkbox" checked={formEtiq.afficher_ingredients||false}
+                        onChange={e=>setFormEtiq({...formEtiq,afficher_ingredients:e.target.checked})}
+                        style={{width:16,height:16,cursor:'pointer'}}/>
+                      Afficher les ingrédients sur l'étiquette
+                    </label>
+                    {formEtiq.afficher_ingredients&&(
+                      <div style={{marginTop:6,background:'#f8f7f4',borderRadius:8,padding:'8px 12px',fontSize:11,color:'#5f5e5a',lineHeight:1.6}}>
+                        {etiqIngredients.map((ing,i)=>{
+                          const allergs = (ing.produits?.allergenes||[]).map(aid=>ALLERGENES_14.find(a=>a.id===aid)?.nom).filter(Boolean)
+                          const isAlerg = allergs.length>0
+                          return <span key={i}>
+                            {i>0&&', '}
+                            <span style={{fontWeight:isAlerg?700:400,textDecoration:isAlerg?'underline':'none',color:isAlerg?'#2c2c2a':'#5f5e5a'}}>
+                              {ing.produits?.nom||''}
+                            </span>
+                          </span>
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+                </div>
+                <div>
+                  <div style={{fontSize:12,color:'#888780',marginBottom:5}}>Poids <span style={{fontWeight:400,fontSize:11}}>(optionnel)</span></div>
+                  <div style={{display:'flex',gap:8}}>
+                    <input type="number" step="0.001" value={formEtiq.poids||''} onChange={e=>setFormEtiq({...formEtiq,poids:e.target.value})}
+                      placeholder="Ex: 250" style={{...inp,flex:2}}/>
+                    <select value={formEtiq.unite_poids||'g'} onChange={e=>setFormEtiq({...formEtiq,unite_poids:e.target.value})}
+                      style={{...inp,flex:1,padding:'8px 6px'}}>
+                      <option value="g">g</option>
+                      <option value="kg">kg</option>
+                      <option value="cl">cl</option>
+                      <option value="ml">ml</option>
+                      <option value="L">L</option>
+                      <option value="portions">portions</option>
+                    </select>
+                  </div>
+                </div>
+                <div>
                   <div style={{fontSize:12,color:'#888780',marginBottom:8}}>Nombre d'exemplaires</div>
                   <div style={{display:'flex',alignItems:'center',gap:12}}>
                     <button onClick={()=>setFormEtiq({...formEtiq,nb_exemplaires:Math.max(1,(formEtiq.nb_exemplaires||1)-1)})}
@@ -1312,26 +1571,75 @@ export default function HACCP() {
             <div style={{display:'flex',flexDirection:'column',gap:16}}>
               <div style={{...card,display:'flex',flexDirection:'column',alignItems:'center',gap:14}}>
                 <div style={ct}>Aperçu de l'étiquette</div>
-                <div style={{background:'#fff',borderRadius:8,overflow:'hidden',width:220,border:'1.5px solid #2c2c2a',boxShadow:'0 2px 8px rgba(0,0,0,0.08)'}}>
-                  <div style={{background:'#2c2c2a',padding:'8px 12px'}}>
-                    <div style={{color:'#fff',fontWeight:700,fontSize:13,textTransform:'uppercase',letterSpacing:'0.5px'}}>{formEtiq.produit_nom||'Nom du produit'}</div>
-                  </div>
-                  <div style={{padding:'10px 12px',display:'flex',flexDirection:'column',gap:7}}>
-                    <div style={{display:'flex',alignItems:'baseline',gap:6}}>
-                      <span style={{fontSize:9,fontWeight:600,color:'#888780',textTransform:'uppercase',letterSpacing:'0.5px',width:70,flexShrink:0}}>Fabriqué le</span>
-                      <span style={{fontSize:12,fontWeight:500,color:'#2c2c2a'}}>{fmt(formEtiq.date_fabrication)}</span>
-                    </div>
-                    <div style={{display:'flex',alignItems:'baseline',gap:6}}>
-                      <span style={{fontSize:9,fontWeight:600,color:'#888780',textTransform:'uppercase',letterSpacing:'0.5px',width:70,flexShrink:0}}>DLC</span>
-                      <span style={{fontSize:15,fontWeight:700,color:'#a32d2d'}}>{fmt(formEtiq.dlc_libre||dlcDate(formEtiq.date_fabrication,formEtiq.jours_dlc))}</span>
-                    </div>
+                {(()=>{
+                  const fmt_ = FORMATS_ETIQ.find(f=>f.id===formEtiq.format_id)||FORMATS_ETIQ[0]
+                  const dm = (fmt_.dim||'').match(/([0-9.]+)[xX]([0-9.]+)/) || (fmt_.dim||'').match(/([0-9.]+).([0-9.]+)/)
+                  const wMm = dm?parseFloat(dm[1]):62
+                  const hMm = dm?parseFloat(dm[2]):29
+                  const isLand = fmt_.orient==='landscape'
+                  const docW = isLand?Math.max(wMm,hMm):wMm
+                  const docH = isLand?Math.min(wMm,hMm):hMm
+                  const maxW=260, maxH=180
+                  const sc = Math.min(maxW/docW, maxH/docH)
+                  const pxW = Math.round(docW*sc)
+                  const pxH = Math.round(docH*sc)
+                  const headerPx = Math.round(pxH*0.28)
+                  const footerPx = Math.max(5, Math.round(pxH*0.06))
+                  const bodyPx = pxH - headerPx - footerPx
+                  const lBase = Math.max(2.5, Math.min(5, docH*0.07))*sc
+                  const dBase = Math.max(4, Math.min(9, docH*0.13))*sc
+                  const dlcBase = Math.max(6, Math.min(18, docH*0.20))*sc
+                  const pBase = Math.max(5, Math.min(14, docH*0.16))*sc
+                  const gBase = Math.max(1.5, Math.min(4, docH*0.04))*sc
+                  const hasPoids = !!(formEtiq.poids&&formEtiq.poids!=='')
+                  const hasLot = !!formEtiq.lot_numero
+                  const ingListPrev = (formEtiq.afficher_ingredients&&etiqIngredients.length>0) ? [...etiqIngredients].sort((a,b)=>(parseFloat(b.poids)||0)-(parseFloat(a.poids)||0)) : []
+                  const hasIng = ingListPrev.length>0
+                  const needed = lBase+dBase*1.2 + gBase + lBase+dlcBase*1.2 + (hasPoids?gBase*2+lBase+pBase*1.2:0) + (hasLot?gBase*2+lBase+dBase*1.2:0) + (hasIng?gBase*2+lBase*0.8+lBase*0.75*3:0)
+                  const asc = Math.min(1.0, (bodyPx*0.72)/needed)
+                  const lPx = lBase*asc
+                  const dPx = dBase*asc
+                  const dlcPx = dlcBase*asc
+                  const pPx = pBase*asc
+                  const gPx = gBase*asc
+                  const pH = Math.max(2, Math.round(pxW*0.04))
+                  const prodNom = formEtiq.produit_nom||'Nom du produit'
+                  const dlcPrev = fmt(formEtiq.dlc_libre||dlcDate(formEtiq.date_fabrication,formEtiq.jours_dlc))
+                  return (
+                    <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:8,width:'100%'}}>
+                      <div style={{fontSize:11,color:'#888780'}}>{fmt_.nom} — {fmt_.dim}</div>
+                      <div style={{width:pxW,height:pxH,display:'flex',flexDirection:'column',overflow:'hidden',fontFamily:'Arial,Helvetica,sans-serif',border:'1.5px solid #2c2c2a',boxShadow:'0 4px 16px rgba(0,0,0,0.15)',flexShrink:0}}>
+                        <div style={{background:'#2c2c2a',height:headerPx,display:'flex',alignItems:'center',justifyContent:'center',padding:'2px '+pH+'px',flexShrink:0}}>
+                          <div style={{color:'#fff',fontWeight:900,fontSize:Math.min(14*sc,Math.max(5*sc,(docW*sc)/(Math.max(prodNom.length*0.6,4)))),textTransform:'uppercase',textAlign:'center',lineHeight:1.1,wordBreak:'break-word'}}>{prodNom}</div>
+                        </div>
+                        <div style={{flex:1,display:'flex',flexDirection:'column',justifyContent:'center',alignItems:'center',padding:'2px '+pH+'px',gap:gPx,background:'#fff',overflow:'hidden'}}>
+                          <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:1,width:'100%'}}>
+                            <span style={{fontSize:lPx,fontWeight:700,color:'#888',textTransform:'uppercase'}}>FABRIQUE LE</span>
+                            <span style={{fontSize:dPx,fontWeight:700,color:'#1a1a1a'}}>{fmt(formEtiq.date_fabrication)}</span>
+                          </div>
+                          <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:1,width:'100%'}}>
+                            <span style={{fontSize:lPx,fontWeight:700,color:'#888',textTransform:'uppercase'}}>DLC</span>
+                            <span style={{fontSize:dlcPx,fontWeight:900,color:'#cc2222'}}>{dlcPrev}</span>
+                          </div>
+                          {hasPoids&&<div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:1,borderTop:'0.5px solid #e0e0e0',paddingTop:Math.max(2,gPx),width:'100%'}}>
+                            <span style={{fontSize:lPx,fontWeight:700,color:'#888',textTransform:'uppercase'}}>POIDS NET</span>
+                            <span style={{fontSize:pPx,fontWeight:900,color:'#1a1a1a'}}>{formEtiq.poids} {formEtiq.unite_poids||'g'}</span>
+                          </div>}
+                          {hasLot&&<div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:1,borderTop:'0.5px solid #e0e0e0',paddingTop:Math.max(2,gPx),width:'100%'}}>
+                            <span style={{fontSize:lPx,fontWeight:700,color:'#888',textTransform:'uppercase'}}>LOT</span>
+                            <span style={{fontSize:dPx,fontWeight:700,color:'#534ab7'}}>{formEtiq.lot_numero}</span>
 
-                  </div>
-                  <div style={{background:'#f8f7f4',borderTop:'0.5px solid #e2e0d8',padding:'4px 12px',fontSize:9,color:'#888780',display:'flex',justifyContent:'space-between'}}>
-                    <span>J+{formEtiq.jours_dlc} jours</span>
-                    <span>{FORMATS_ETIQ.find(f=>f.id===formEtiq.format_id)?.dim||''}</span>
-                  </div>
-                </div>
+                          </div>}
+                        </div>
+                        <div style={{height:footerPx,background:'#f5f5f5',borderTop:'0.5px solid #ddd',display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 '+pH+'px',flexShrink:0}}>
+                          <span style={{fontSize:Math.max(6,lPx*0.7),color:'#aaa'}}>{userConnecte||''}</span>
+                          <span style={{fontSize:Math.max(6,lPx*0.7),color:'#aaa'}}>{fmt_.dim}</span>
+                        </div>
+                      </div>
+                      <div style={{fontSize:10,color:'#b4b2a9'}}>{fmt_.imprimante}</div>
+                    </div>
+                  )
+                })()}
                 <div style={{display:'flex',flexDirection:'column',gap:8,width:'100%'}}>
                   <div style={{display:'flex',gap:8}}>
                   <button onClick={()=>setModalListModeles(true)} style={{...btn,flex:1,justifyContent:'center',borderColor:'#afa9ec',background:'#eeedfe',color:'#3c3489'}}>
@@ -2204,53 +2512,44 @@ export default function HACCP() {
               <div style={card}>
                 <div style={{...ct,marginBottom:14}}>Photo traçabilité (optionnel)</div>
                 {/* Camera / Photo display */}
-                <div style={{position:'relative',background:'#1a1a1a',borderRadius:12,overflow:'hidden',aspectRatio:'4/3',marginBottom:12,display:'flex',alignItems:'center',justifyContent:'center'}}>
-                  {cameraActive && (
-                    <video ref={videoRef} autoPlay playsInline muted
-                      style={{width:'100%',height:'100%',objectFit:'cover'}}/>
-                  )}
-                  {photoCapturee && !cameraActive && (
-                    <img src={photoCapturee} alt="Photo" style={{width:'100%',height:'100%',objectFit:'cover'}}/>
-                  )}
-                  {!cameraActive && !photoCapturee && (
-                    <div style={{textAlign:'center',color:'#888780'}}>
-                      <i className="ti ti-camera" style={{fontSize:48,display:'block',marginBottom:8}}/>
-                      <div style={{fontSize:13}}>Activez la camera</div>
-                    </div>
-                  )}
+                {/* Camera live view */}
+                <div style={{position:'relative',background:'#1a1a1a',borderRadius:12,overflow:'hidden',aspectRatio:'4/3',marginBottom:10,display:'flex',alignItems:'center',justifyContent:'center'}}>
+                  {cameraActive
+                    ? <video ref={videoRef} autoPlay playsInline muted style={{width:'100%',height:'100%',objectFit:'cover'}}/>
+                    : <div style={{textAlign:'center',color:'#888780'}}>
+                        <i className="ti ti-camera" style={{fontSize:40,display:'block',marginBottom:6}}/>
+                        <div style={{fontSize:12}}>{photosCapturees.length>0?photosCapturees.length+' photo(s) prise(s)':'Activez la camera'}</div>
+                      </div>
+                  }
                   <canvas ref={canvasRef} style={{display:'none'}}/>
+                  {photosCapturees.length>0&&<div style={{position:'absolute',top:8,right:8,background:'#534ab7',color:'#fff',borderRadius:20,padding:'2px 8px',fontSize:11,fontWeight:600}}>{photosCapturees.length} photo(s)</div>}
                 </div>
-                {/* Camera controls */}
+                {/* Controls */}
                 <div style={{display:'flex',gap:8,marginBottom:8}}>
-                  {!cameraActive && !photoCapturee && (
-                    <button onClick={demarrerCamera} style={{...btnP,flex:1,justifyContent:'center'}}>
-                      <i className="ti ti-camera"/>Activer la camera
-                    </button>
-                  )}
-                  {cameraActive && (
-                    <>
-                      <button onClick={prendrePhoto} style={{...btnP,flex:1,justifyContent:'center',background:'#a32d2d'}}>
-                        <i className="ti ti-circle-filled"/>Prendre la photo
+                  {!cameraActive
+                    ? <button onClick={demarrerCamera} style={{...btnP,flex:1,justifyContent:'center'}}>
+                        <i className="ti ti-camera"/>{photosCapturees.length>0?'Ajouter une photo':'Activer la camera'}
                       </button>
-                      <button onClick={arreterCamera} style={{...btnSm,padding:'8px 12px'}}>
-                        <i className="ti ti-x"/>
-                      </button>
-                    </>
-                  )}
-                  {photoCapturee && !cameraActive && (
-                    <>
-                      <button onClick={demarrerCamera} style={{...btnSm,flex:1,justifyContent:'center'}}>
-                        <i className="ti ti-refresh"/>Reprendre
-                      </button>
-                      <button onClick={()=>setPhotoCapturee(null)} style={{...btnSm,color:'#a32d2d',borderColor:'#f09595',background:'#fcebeb',padding:'8px 12px'}}>
-                        <i className="ti ti-trash"/>
-                      </button>
-                    </>
-                  )}
+                    : <>
+                        <button onClick={prendrePhoto} style={{...btnP,flex:1,justifyContent:'center',background:'#a32d2d'}}>
+                          <i className="ti ti-circle-filled"/>Capturer
+                        </button>
+                        <button onClick={arreterCamera} style={{...btnSm,padding:'8px 12px'}}>
+                          <i className="ti ti-check"/>Terminer
+                        </button>
+                      </>
+                  }
                 </div>
-                {photoCapturee && (
-                  <div style={{fontSize:12,color:'#27500a',background:'#eaf3de',borderRadius:8,padding:'6px 10px',textAlign:'center'}}>
-                    Photo prete a etre associee au lot
+                {/* Miniatures photos prises */}
+                {photosCapturees.length>0&&(
+                  <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:8}}>
+                    {photosCapturees.map((p,i)=>(
+                      <div key={i} style={{position:'relative'}}>
+                        <img src={p} alt={'photo '+i} style={{width:52,height:52,objectFit:'cover',borderRadius:8,border:'0.5px solid #d3d1c7'}}/>
+                        <button onClick={()=>setPhotosCapturees(prev=>prev.filter((_,j)=>j!==i))}
+                          style={{position:'absolute',top:-4,right:-4,width:16,height:16,borderRadius:'50%',background:'#a32d2d',border:'none',color:'#fff',fontSize:9,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>✕</button>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
@@ -2258,52 +2557,97 @@ export default function HACCP() {
               {/* RIGHT: Lot form */}
               <div style={{display:'flex',flexDirection:'column',gap:12}}>
                 <div style={card}>
-                  <div style={{...ct,marginBottom:14}}>Informations du lot (optionnel)</div>
+                  <div style={{...ct,marginBottom:14}}>Informations du lot <span style={{fontWeight:400,fontSize:12,color:'#888780'}}>(optionnel)</span></div>
                   <div style={{display:'flex',flexDirection:'column',gap:10}}>
                     <div>
                       <div style={{fontSize:12,color:'#888780',marginBottom:5}}>N° de lot <span style={{fontWeight:400,fontSize:11}}>(auto si vide)</span></div>
-                      <input placeholder="Ex: L20260623-001" value={formLot.numero_lot} onChange={e=>setFormLot({...formLot,numero_lot:e.target.value})} style={inp}/>
+                      <input placeholder="Laissez vide pour générer automatiquement" value={formLot.numero_lot||''} onChange={e=>setFormLot({...formLot,numero_lot:e.target.value})} style={inp}/>
                     </div>
+
+                    {/* Produits mercuriale — multi-sélection */}
                     <div>
-                      <div style={{fontSize:12,color:'#888780',marginBottom:5}}>Produit <span style={{fontWeight:400,fontSize:11}}>(mercuriale ou nom libre)</span></div>
-                      <input
-                        placeholder="Tapez pour chercher ou saisir un nom libre..."
-                        value={formLot.produit_id ? (produits.find(p=>p.id===formLot.produit_id)?.nom||'') : formLot.produit_nom}
-                        onChange={e=>{
-                          const val = e.target.value
-                          const match = produits.find(p=>p.nom.toLowerCase()===val.toLowerCase())
-                          if(match) setFormLot({...formLot,produit_id:match.id,produit_nom:''})
-                          else setFormLot({...formLot,produit_nom:val,produit_id:''})
-                        }}
-                        list="produits-list"
-                        style={inp}/>
-                      <datalist id="produits-list">
-                        {produits.map(p=><option key={p.id} value={p.nom}/>)}
-                      </datalist>
-                      {formLot.produit_id&&<div style={{fontSize:11,color:'#534ab7',marginTop:3}}>
-                        Produit mercuriale sélectionné
-                      </div>}
-                      {formLot.produit_nom&&!formLot.produit_id&&<div style={{fontSize:11,color:'#888780',marginTop:3}}>
-                        Nom libre (pas dans la mercuriale)
-                      </div>}
+                      <div style={{fontSize:12,color:'#888780',marginBottom:5}}>Produits mercuriale <span style={{fontWeight:400,fontSize:11}}>(optionnel — plusieurs possibles)</span></div>
+                      <div style={{display:'flex',gap:6,marginBottom:6}}>
+                        <input
+                          placeholder="Tapez pour chercher..."
+                          list="produits-list-traca"
+                          id="produit-traca-input"
+                          style={{...inp,flex:1}}
+                          onKeyDown={e=>{
+                            if(e.key==='Enter'){
+                              const val=e.target.value.trim()
+                              if(!val) return
+                              const match=produits.find(p=>p.nom.toLowerCase()===val.toLowerCase())
+                              const already=lignesProduits.some(l=>l.type==='produit'&&l.nom===val)
+                              if(!already) setLignesProduits(prev=>[...prev,{type:'produit',id:match?match.id:'',nom:val}])
+                              e.target.value=''
+                            }
+                          }}
+                        />
+                        <datalist id="produits-list-traca">{produits.map(p=><option key={p.id} value={p.nom}/>)}</datalist>
+                        <button onClick={()=>{
+                          const inp2=document.getElementById('produit-traca-input')
+                          const val=inp2?.value.trim()
+                          if(!val) return
+                          const match=produits.find(p=>p.nom.toLowerCase()===val.toLowerCase())
+                          const already=lignesProduits.some(l=>l.type==='produit'&&l.nom===val)
+                          if(!already) setLignesProduits(prev=>[...prev,{type:'produit',id:match?match.id:'',nom:val}])
+                          if(inp2) inp2.value=''
+                        }} style={{...btnSmP,padding:'8px 12px'}}><i className="ti ti-plus"/></button>
+                      </div>
+                      {lignesProduits.filter(l=>l.type==='produit').length>0&&(
+                        <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
+                          {lignesProduits.filter(l=>l.type==='produit').map((l,i)=>(
+                            <span key={i} style={{display:'flex',alignItems:'center',gap:4,background:'#e6f1fb',color:'#0c447c',borderRadius:20,padding:'3px 10px',fontSize:12,fontWeight:500}}>
+                              {l.nom}
+                              <button onClick={()=>setLignesProduits(prev=>prev.filter(x=>!(x.type==='produit'&&x.nom===l.nom)))}
+                                style={{background:'none',border:'none',cursor:'pointer',color:'#0c447c',padding:0,fontSize:12,lineHeight:1}}>✕</button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
+
+                    {/* Fiches recettes — multi-sélection */}
                     <div>
-                      <div style={{fontSize:12,color:'#888780',marginBottom:5}}>Lier a une production</div>
-                      <select value={formLot.recette_id} onChange={e=>setFormLot({...formLot,recette_id:e.target.value})} style={inp}>
-                        <option value="">Aucune</option>
-                        {recettes.map(r=><option key={r.id} value={r.id}>{r.nom}</option>)}
-                      </select>
+                      <div style={{fontSize:12,color:'#888780',marginBottom:5}}>Fiches recettes / productions <span style={{fontWeight:400,fontSize:11}}>(optionnel — plusieurs possibles)</span></div>
+                      <div style={{display:'flex',gap:6,marginBottom:6}}>
+                        <select value={selectRecetteId} onChange={e=>setSelectRecetteId(e.target.value)} style={{...inp,flex:1}}>
+                          <option value="">Sélectionner une recette...</option>
+                          {recettes.map(r=><option key={r.id} value={r.id}>{r.nom}</option>)}
+                        </select>
+                        <button onClick={()=>{
+                          if(!selectRecetteId) return
+                          const r=recettes.find(x=>x.id===selectRecetteId)
+                          if(!r) return
+                          const already=lignesProduits.some(l=>l.type==='recette'&&l.id===r.id)
+                          if(!already) setLignesProduits(prev=>[...prev,{type:'recette',id:r.id,nom:r.nom}])
+                          setSelectRecetteId('')
+                        }} style={{...btnSmP,padding:'8px 12px'}}><i className="ti ti-plus"/></button>
+                      </div>
+                      {lignesProduits.filter(l=>l.type==='recette').length>0&&(
+                        <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
+                          {lignesProduits.filter(l=>l.type==='recette').map((l,i)=>(
+                            <span key={i} style={{display:'flex',alignItems:'center',gap:4,background:'#eeedfe',color:'#534ab7',borderRadius:20,padding:'3px 10px',fontSize:12,fontWeight:500}}>
+                              {l.nom}
+                              <button onClick={()=>setLignesProduits(prev=>prev.filter(x=>!(x.type==='recette'&&x.id===l.id)))}
+                                style={{background:'none',border:'none',cursor:'pointer',color:'#534ab7',padding:0,fontSize:12,lineHeight:1}}>✕</button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
+
                     <div>
                       <div style={{fontSize:12,color:'#888780',marginBottom:5}}>Date de production</div>
-                      <input type="date" value={formLot.date_production} onChange={e=>setFormLot({...formLot,date_production:e.target.value})} style={inp}/>
+                      <input type="date" value={formLot.date_production||''} onChange={e=>setFormLot({...formLot,date_production:e.target.value})} style={inp}/>
                     </div>
                   </div>
                 </div>
                 <button onClick={creerLot} disabled={uploadingPhoto}
                   style={{...btnP,padding:14,justifyContent:'center',opacity:uploadingPhoto?0.7:1}}>
                   <i className="ti ti-check"/>
-                  {uploadingPhoto?'Upload photo...':'Enregistrer le lot'+(photoCapturee?' avec photo':'')}
+                  {uploadingPhoto?'Upload photo...':'Enregistrer le lot'+(photosCapturees.length>0?' ('+photosCapturees.length+' photo(s))':'')}
                 </button>
                 <div style={{fontSize:12,color:'#888780',textAlign:'center'}}>
                   Tout est optionnel — vous pouvez enregistrer juste une photo ou juste un lot
@@ -2322,21 +2666,35 @@ export default function HACCP() {
                 ? <div style={{textAlign:'center',color:'#b4b2a9',padding:32,fontSize:13}}>Aucun lot enregistré</div>
                 : <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
                     <thead><tr>
-                      {['N Lot','Produit','Production','Date','Photo','Statut',''].map(h=><th key={h} style={th}>{h}</th>)}
+                      {['N Lot','Produit(s)','Production','Date','Photos','Statut',''].map(h=><th key={h} style={th}>{h}</th>)}
                     </tr></thead>
                     <tbody>
                       {lotsFiltres.map(l=>(
                         <tr key={l.id} style={{background:l.rappele?'#fff8f8':'#fff'}}>
                           <td style={{...td,fontFamily:'monospace',fontWeight:500,color:'#534ab7'}}>{l.numero_lot}</td>
-                          <td style={{...td,fontWeight:500,color:'#2c2c2a'}}>{l.produits?.nom||l.produit_nom||'—'}</td>
-                          <td style={{...td,color:'#888780'}}>{l.recettes?.nom||'—'}</td>
+                          <td style={{...td,fontWeight:500,color:'#2c2c2a'}}>{l.produit_nom||l.produits?.nom||'—'}</td>
+                          <td style={{...td,color:'#534ab7',fontWeight:500}}>{l.recettes?.nom||'—'}</td>
                           <td style={{...td,color:'#888780'}}>{fmt(l.date_production)}</td>
                           <td style={td}>
-                            {l.photo_url
-                              ? <img src={l.photo_url} alt="photo" onClick={()=>setModalViewPhoto(l.photo_url)}
-                                  style={{width:40,height:40,objectFit:'cover',borderRadius:6,cursor:'pointer',border:'0.5px solid #d3d1c7'}}/>
-                              : <span style={{color:'#d3d1c7',fontSize:11}}>—</span>
-                            }
+                            {(()=>{
+                              let urls=[]
+                              try{urls=JSON.parse(l.photos_urls||'[]')}catch(e){}
+                              if(urls.length===0&&l.photo_url) urls=[l.photo_url]
+                              if(urls.length===0) return <span style={{color:'#d3d1c7',fontSize:11}}>—</span>
+                              return <div style={{display:'flex',gap:3,alignItems:'center'}}>
+                                {urls.slice(0,3).map((u,i)=>(
+                                  <img key={i} src={u} alt={'p'+i}
+                                    onClick={()=>setModalCarousel({urls,idx:i})}
+                                    style={{width:32,height:32,objectFit:'cover',borderRadius:4,cursor:'pointer',border:'0.5px solid #d3d1c7'}}/>
+                                ))}
+                                {urls.length>3&&(
+                                  <span onClick={()=>setModalCarousel({urls,idx:3})}
+                                    style={{fontSize:11,color:'#534ab7',cursor:'pointer',fontWeight:600,padding:'2px 4px',borderRadius:4,background:'#eeedfe'}}>
+                                    +{urls.length-3}
+                                  </span>
+                                )}
+                              </div>
+                            })()}
                           </td>
                           <td style={td}><span style={badge(!l.rappele)}>{l.rappele?'Rappele':'OK'}</span></td>
                           <td style={{...td,textAlign:'right'}}>
@@ -2729,59 +3087,223 @@ return [r.date_reception,r.fournisseur,clean(r.produit_nom),clean(r.bon_livraiso
 
       {tab==='pms' && (
         <div style={{display:'flex',flexDirection:'column',gap:16}}>
-          {/* Alertes */}
+
+          {/* Alertes expiration */}
           {(docsExpires.length>0||docsBientot.length>0)&&(
-            <div style={card}>
-              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
-                <div style={ct}>Documents à mettre à jour</div>
-                <span style={{fontSize:11,background:'#fcebeb',color:'#a32d2d',padding:'2px 10px',borderRadius:10,fontWeight:500}}>{docsExpires.length+docsBientot.length} urgent(s)</span>
-              </div>
-              <div style={{display:'flex',flexDirection:'column',gap:8}}>
-                {[...docsExpires.map(d=>({...d,urgent:true})),...docsBientot.map(d=>({...d,urgent:false}))].map(d=>(
-                  <div key={d.id} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 14px',borderRadius:10,background:d.urgent?'#fcebeb':'#faeeda',border:`0.5px solid ${d.urgent?'#f09595':'#fac775'}`}}>
-                    <i className={`ti ${d.urgent?'ti-alert-triangle':'ti-clock'}`} style={{color:d.urgent?'#a32d2d':'#854f0b',fontSize:18,flexShrink:0}}/>
-                    <div style={{flex:1}}>
-                      <div style={{fontSize:13,fontWeight:500,color:'#2c2c2a'}}>{d.nom}</div>
-                      <div style={{fontSize:11,color:'#888780',marginTop:2}}>{d.categorie||'Sans catégorie'} — {d.urgent?'Expiré':'Expire le '+fmt(d.date_expiration)}</div>
-                    </div>
-                    <span style={{fontSize:11,padding:'2px 8px',borderRadius:8,fontWeight:500,background:d.urgent?'#a32d2d':'#854f0b',color:'#fff'}}>{d.urgent?'Expiré':'Bientôt'}</span>
+            <div style={{display:'flex',flexDirection:'column',gap:8}}>
+              {docsExpires.map(d=>(
+                <div key={d.id} style={{background:'#fcebeb',border:'1.5px solid #f09595',borderRadius:12,padding:'12px 16px',display:'flex',alignItems:'center',gap:10}}>
+                  <i className="ti ti-alert-triangle" style={{color:'#a32d2d',fontSize:18,flexShrink:0}}/>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:13,fontWeight:600,color:'#a32d2d'}}>Document expiré : {d.nom}</div>
+                    <div style={{fontSize:11,color:'#791f1f'}}>Expiré le {d.date_expiration?new Date(d.date_expiration+'T12:00:00').toLocaleDateString('fr-FR'):''} — À renouveler immédiatement</div>
                   </div>
-                ))}
-              </div>
+                </div>
+              ))}
+              {docsBientot.filter(d=>!estExpire(d.date_expiration)).map(d=>(
+                <div key={d.id} style={{background:'#faeeda',border:'1.5px solid #fac775',borderRadius:12,padding:'12px 16px',display:'flex',alignItems:'center',gap:10}}>
+                  <i className="ti ti-clock" style={{color:'#854f0b',fontSize:18,flexShrink:0}}/>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:13,fontWeight:600,color:'#854f0b'}}>Expire bientôt : {d.nom}</div>
+                    <div style={{fontSize:11,color:'#633806'}}>Expire le {d.date_expiration?new Date(d.date_expiration+'T12:00:00').toLocaleDateString('fr-FR'):''}</div>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
 
-          <div style={card}>
-            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14}}>
-              <div style={ct}>Plan de Maîtrise Sanitaire</div>
-              <button onClick={()=>setModalDoc(true)} style={btnSmP}><i className="ti ti-plus"/>Ajouter un document</button>
+          {/* Info PMS */}
+          <div style={{...card,background:'#eeedfe',borderColor:'#afa9ec'}}>
+            <div style={{display:'flex',gap:10,alignItems:'flex-start'}}>
+              <i className="ti ti-info-circle" style={{fontSize:20,color:'#534ab7',flexShrink:0,marginTop:1}}/>
+              <div style={{fontSize:13,color:'#3c3489',lineHeight:1.7}}>
+                <strong>Documents obligatoires PMS :</strong> formation HACCP du personnel, contrat dératisation, analyses microbiologiques, GBPH, fiches produits nettoyants, plan de locaux, agréments sanitaires. Un inspecteur peut les demander à tout moment.
+              </div>
             </div>
-            {documents.length===0
-              ? <div style={{textAlign:'center',color:'#b4b2a9',padding:32,fontSize:13}}>Aucun document enregistré</div>
-              : <div style={{display:'flex',flexDirection:'column',gap:8}}>
-                  {documents.map(d=>(
-                    <div key={d.id} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'12px 16px',borderRadius:10,background:estExpire(d.date_expiration)?'#fcebeb':expireBientot(d.date_expiration)?'#faeeda':'#f8f7f4',border:`0.5px solid ${estExpire(d.date_expiration)?'#f09595':expireBientot(d.date_expiration)?'#fac775':'#e2e0d8'}`}}>
-                      <div style={{display:'flex',alignItems:'center',gap:10}}>
-                        <i className="ti ti-file-text" style={{color:'#888780',fontSize:16}}/>
-                        <div>
-                          <div style={{fontSize:13,fontWeight:500,color:'#2c2c2a'}}>{d.nom}</div>
-                          <div style={{fontSize:11,color:'#888780',marginTop:2}}>
-                            {d.categorie||'Sans catégorie'}{d.date_expiration&&' — Expire le '+fmt(d.date_expiration)}
-                          </div>
-                        </div>
-                      </div>
-                      {estExpire(d.date_expiration)&&<span style={{fontSize:11,padding:'2px 8px',borderRadius:8,background:'#a32d2d',color:'#fff',fontWeight:500}}>Expiré</span>}
-                      {!estExpire(d.date_expiration)&&expireBientot(d.date_expiration)&&<span style={{fontSize:11,padding:'2px 8px',borderRadius:8,background:'#faeeda',color:'#854f0b',fontWeight:500}}>Bientôt</span>}
-                      {!estExpire(d.date_expiration)&&!expireBientot(d.date_expiration)&&<span style={{fontSize:11,padding:'2px 8px',borderRadius:8,background:'#eaf3de',color:'#27500a',fontWeight:500}}>À jour</span>}
-                    </div>
-                  ))}
+          </div>
+
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
+            {/* Formulaire ajout document */}
+            <div style={card}>
+              <div style={{...ct,marginBottom:14}}>Ajouter un document</div>
+              <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                <div>
+                  <div style={{fontSize:12,color:'#888780',marginBottom:5}}>Nom du document *</div>
+                  <input value={formDoc.nom} onChange={e=>setFormDoc({...formDoc,nom:e.target.value})}
+                    placeholder="Ex: Formation HACCP Rafael, Contrat Rentokil..." style={inp}/>
                 </div>
+                <div>
+                  <div style={{fontSize:12,color:'#888780',marginBottom:5}}>Catégorie</div>
+                  <select value={formDoc.categorie} onChange={e=>setFormDoc({...formDoc,categorie:e.target.value})} style={inp}>
+                    <option value="">Sélectionner...</option>
+                    <option value="formation">Formation HACCP / Hygiène</option>
+                    <option value="nuisibles">Lutte contre les nuisibles</option>
+                    <option value="analyses">Analyses microbiologiques</option>
+                    <option value="nettoyage">Produits de nettoyage (FDS)</option>
+                    <option value="eau">Contrôle de l eau</option>
+                    <option value="agrement">Agrément sanitaire</option>
+                    <option value="plan">Plan des locaux</option>
+                    <option value="gbph">GBPH / Guide bonnes pratiques</option>
+                    <option value="medical">Aptitude médicale personnel</option>
+                    <option value="autre">Autre</option>
+                  </select>
+                </div>
+                <div>
+                  <div style={{fontSize:12,color:'#888780',marginBottom:5}}>Date d expiration (optionnel)</div>
+                  <input type="date" value={formDoc.date_expiration} onChange={e=>setFormDoc({...formDoc,date_expiration:e.target.value})} style={inp}/>
+                  {formDoc.date_expiration&&(()=>{
+                    const d=new Date(formDoc.date_expiration+'T12:00:00')
+                    const jours=Math.ceil((d-new Date())/86400000)
+                    return <div style={{fontSize:11,marginTop:4,color:jours<0?'#a32d2d':jours<30?'#854f0b':'#27500a'}}>
+                      {jours<0?'Déjà expiré !':jours<30?'Expire dans '+jours+' jours':'Valide '+jours+' jours'}
+                    </div>
+                  })()}
+                </div>
+                {formDoc.categorie==='autre'&&(
+                  <div>
+                    <div style={{fontSize:12,color:'#888780',marginBottom:5}}>Précisez la catégorie *</div>
+                    <input value={formDoc.categorie_autre||''} onChange={e=>setFormDoc({...formDoc,categorie_autre:e.target.value})}
+                      placeholder="Ex: Agrément bio, Certification ISO..." style={inp}/>
+                  </div>
+                )}
+                <div>
+                  <div style={{fontSize:12,color:'#888780',marginBottom:5}}>Notes / Commentaire</div>
+                  <input value={formDoc.commentaire||''} onChange={e=>setFormDoc({...formDoc,commentaire:e.target.value})}
+                    placeholder="Ex: Renouvellement prévu en mars, contact: 01 23 45 67..." style={inp}/>
+                </div>
+                <div>
+                  <div style={{fontSize:12,color:'#888780',marginBottom:5}}>Importer le document (PDF, image)</div>
+                  <label style={{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',borderRadius:8,border:'1.5px dashed #d3d1c7',cursor:'pointer',background:'#f8f7f4'}}>
+                    <i className="ti ti-upload" style={{color:'#534ab7',fontSize:18}}/>
+                    <span style={{fontSize:13,color:pmsUploadFile?'#534ab7':'#888780'}}>
+                      {pmsUploadFile?pmsUploadFile.name:'Cliquez pour importer un fichier'}
+                    </span>
+                    <input type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" style={{display:'none'}}
+                      onChange={e=>setPmsUploadFile(e.target.files[0]||null)}/>
+                  </label>
+                  {pmsUploadFile&&<div style={{fontSize:11,color:'#534ab7',marginTop:4}}>
+                    Fichier sélectionné : {(pmsUploadFile.size/1024).toFixed(0)} Ko
+                  </div>}
+                </div>
+                <div>
+                  <div style={{fontSize:12,color:'#888780',marginBottom:5}}>Responsable</div>
+                  <select value={formDoc.responsable||''} onChange={e=>setFormDoc({...formDoc,responsable:e.target.value})} style={inp}>
+                    <option value="">Sélectionner...</option>
+                    {equipe.map(m=><option key={m.id} value={m.nom}>{m.nom}</option>)}
+                  </select>
+                </div>
+                <button onClick={async()=>{
+                  if(!formDoc.nom){showToast('Nom requis','err');return}
+                  setPmsUploading(true)
+                  let fileUrl = null
+                  if(pmsUploadFile) fileUrl = await uploadDocPms(pmsUploadFile)
+                  setPmsUploading(false)
+                  const catFinale = formDoc.categorie==='autre' ? (formDoc.categorie_autre||'autre') : formDoc.categorie
+                  const {error}=await supabase.from('haccp_documents').insert({
+                    nom:formDoc.nom, categorie:catFinale,
+                    date_expiration:formDoc.date_expiration||null,
+                    commentaire:formDoc.commentaire||null,
+                    responsable:formDoc.responsable||null,
+                    fichier_url:fileUrl||null,
+                    etablissement_id:etabId
+                  })
+                  if(error){showToast('Erreur: '+error.message,'err');return}
+                  setFormDoc({nom:'',categorie:'',date_expiration:'',commentaire:'',responsable:'',categorie_autre:''})
+                  setPmsUploadFile(null)
+                  charger(); showToast('Document ajouté !')
+                }} style={{...btnP,padding:12,justifyContent:'center',marginTop:4}}>
+                  <i className="ti ti-plus"/>Ajouter ce document
+                </button>
+              </div>
+            </div>
+
+            {/* Liste documents */}
+            <div style={{display:'flex',flexDirection:'column',gap:10}}>
+              {/* Checklist obligatoire */}
+              <div style={card}>
+                <div style={{...ct,marginBottom:12}}>Checklist PMS obligatoire</div>
+                {[
+                  {label:'Formation HACCP personnel',cat:'formation'},
+                  {label:'Contrat dératisation/désinsectisation',cat:'nuisibles'},
+                  {label:'Analyses microbiologiques',cat:'analyses'},
+                  {label:'Fiches de données sécurité (nettoyants)',cat:'nettoyage'},
+                  {label:'Guide Bonnes Pratiques Hygiéniques',cat:'gbph'},
+                ].map(item=>{
+                  const present=documents.some(d=>d.categorie===item.cat&&!estExpire(d.date_expiration))
+                  return (
+                    <div key={item.cat} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 0',borderBottom:'0.5px solid #f1efe8'}}>
+                      <div style={{width:20,height:20,borderRadius:6,background:present?'#639922':'#e2e0d8',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                        {present&&<i className="ti ti-check" style={{color:'#fff',fontSize:10}}/>}
+                      </div>
+                      <span style={{fontSize:12,color:present?'#27500a':'#a32d2d',flex:1}}>{item.label}</span>
+                      {!present&&<span style={{fontSize:10,color:'#a32d2d'}}>Manquant</span>}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Tableau documents */}
+          <div style={card}>
+            <div style={{...ct,marginBottom:14}}>{documents.length} document(s) enregistré(s)</div>
+            {documents.length===0
+              ? <div style={{textAlign:'center',color:'#b4b2a9',padding:32,fontSize:13}}>Aucun document — commencez par ajouter vos documents obligatoires</div>
+              : (()=>{
+                  const cats = {formation:'Formation',nuisibles:'Nuisibles',analyses:'Analyses',nettoyage:'Nettoyage',eau:'Eau',agrement:'Agrément',plan:'Plan',gbph:'GBPH',medical:'Médical',autre:'Autre','':'Autre'}
+                  const grouped = {}
+                  documents.forEach(d=>{const cat=d.categorie||'autre'; if(!grouped[cat]) grouped[cat]=[]; grouped[cat].push(d)})
+                  return Object.entries(grouped).map(([cat,docs])=>(
+                    <div key={cat} style={{marginBottom:16}}>
+                      <div style={{fontSize:11,fontWeight:600,color:'#888780',textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:8}}>{cats[cat]||cat}</div>
+                      {docs.map(d=>{
+                        const expire=estExpire(d.date_expiration)
+                        const bientot=!expire&&expireBientot(d.date_expiration)
+                        const jours=d.date_expiration?Math.ceil((new Date(d.date_expiration+'T12:00:00')-new Date())/86400000):null
+                        return (
+                          <div key={d.id} onClick={()=>setModalDocDetail(d)} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'12px 14px',borderRadius:10,cursor:'pointer',
+                            background:expire?'#fff0f0':bientot?'#fffbf0':'#fff',
+                            border:`0.5px solid ${expire?'#f09595':bientot?'#fac775':'#e2e0d8'}`,marginBottom:6}}>
+                            <div style={{flex:1}}>
+                              <div style={{fontSize:13,fontWeight:500,color:'#2c2c2a',display:'flex',alignItems:'center',gap:6}}>
+                                {d.fichier_url&&<i className="ti ti-file" style={{color:'#534ab7',fontSize:14}}/>}
+                                {d.nom}
+                              </div>
+                              <div style={{fontSize:11,color:'#888780',marginTop:2,display:'flex',gap:12,flexWrap:'wrap'}}>
+                                {d.responsable&&<span>👤 {d.responsable}</span>}
+                                {d.commentaire&&<span>💬 {d.commentaire}</span>}
+                                {d.date_expiration&&<span style={{color:expire?'#a32d2d':bientot?'#854f0b':'#27500a',fontWeight:500}}>
+                                  {expire?'Expire':bientot?'Expire dans '+jours+'j':'Valide jusqu au'} {new Date(d.date_expiration+'T12:00:00').toLocaleDateString('fr-FR')}
+                                </span>}
+                              </div>
+                            </div>
+                            <div style={{display:'flex',gap:6,alignItems:'center',flexShrink:0}}>
+                              {expire&&<span style={{fontSize:11,padding:'2px 8px',borderRadius:8,background:'#fcebeb',color:'#a32d2d',fontWeight:600}}>Expiré</span>}
+                              {bientot&&<span style={{fontSize:11,padding:'2px 8px',borderRadius:8,background:'#faeeda',color:'#854f0b',fontWeight:600}}>Bientôt</span>}
+                              {!expire&&!bientot&&d.date_expiration&&<span style={{fontSize:11,padding:'2px 8px',borderRadius:8,background:'#eaf3de',color:'#27500a',fontWeight:500}}>Valide</span>}
+                              {d.fichier_url&&(
+                                <a href={d.fichier_url} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()}
+                                  style={{...btnSm,color:'#0c447c',borderColor:'#85b7eb',background:'#e6f1fb',padding:'5px 7px',textDecoration:'none'}}>
+                                  <i className="ti ti-download"/>
+                                </a>
+                              )}
+                              <button onClick={e=>{e.stopPropagation();setModalConfirm({title:'Supprimer ce document ?',message:d.nom,onConfirm:async()=>{
+                                  await supabase.from('haccp_documents').delete().eq('id',d.id)
+                                  charger(); showToast('Document supprimé')
+                                }})
+                              }} style={{...btnSm,color:'#a32d2d',borderColor:'#f09595',background:'#fcebeb',padding:'5px 7px'}}><i className="ti ti-trash"/></button>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  ))
+                })()
             }
           </div>
         </div>
       )}
 
-      {/* ── HUILES DE FRITURE ── */}
       {tab==='huiles' && (
         <div style={{display:'flex',flexDirection:'column',gap:16}}>
           {/* Info */}
@@ -3417,6 +3939,168 @@ return [r.date_reception,r.fournisseur,clean(r.produit_nom),clean(r.bon_livraiso
           </div>
         )
       })()}
+
+      {/* Modal detail document PMS */}
+      {modalDocDetail&&(()=>{
+        const d = modalDocDetail
+        const expire = estExpire(d.date_expiration)
+        const bientot = !expire && expireBientot(d.date_expiration)
+        const jours = d.date_expiration ? Math.ceil((new Date(d.date_expiration+'T12:00:00')-new Date())/86400000) : null
+        const catLabels = {formation:'Formation HACCP / Hygiene',nuisibles:'Lutte contre les nuisibles',analyses:'Analyses microbiologiques',nettoyage:'Produits de nettoyage',eau:'Controle de l eau',agrement:'Agrement sanitaire',plan:'Plan des locaux',gbph:'GBPH',medical:'Aptitude medicale',autre:'Autre'}
+        // Historique = tous les docs de meme categorie + meme nom de base, triés par date
+        const historique = documents
+          .filter(x => x.categorie === d.categorie && x.id !== d.id)
+          .sort((a,b) => new Date(b.created_at||0) - new Date(a.created_at||0))
+        return (
+          <div onClick={e=>e.target===e.currentTarget&&setModalDocDetail(null)}
+            style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.45)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:500,padding:16}}>
+            <div style={{background:'#fff',borderRadius:16,padding:0,width:'100%',maxWidth:560,maxHeight:'90vh',overflowY:'auto'}}>
+              {/* Header */}
+              <div style={{background:expire?'#a32d2d':bientot?'#854f0b':'#534ab7',borderRadius:'16px 16px 0 0',padding:'20px 24px',color:'#fff'}}>
+                <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:12}}>
+                  <div>
+                    <div style={{fontSize:18,fontWeight:700,marginBottom:4}}>{d.nom}</div>
+                    <div style={{fontSize:12,opacity:0.85}}>{catLabels[d.categorie]||d.categorie}</div>
+                  </div>
+                  <button onClick={()=>setModalDocDetail(null)} style={{background:'rgba(255,255,255,0.2)',border:'none',color:'#fff',borderRadius:8,padding:'6px 10px',cursor:'pointer',flexShrink:0}}>
+                    <i className="ti ti-x"/>
+                  </button>
+                </div>
+                {d.date_expiration&&(
+                  <div style={{marginTop:12,background:'rgba(255,255,255,0.15)',borderRadius:8,padding:'8px 12px',fontSize:13}}>
+                    {expire ? 'Expire depuis le ' : bientot ? 'Expire le ' : 'Valide jusquau '}
+                    <strong>{new Date(d.date_expiration+'T12:00:00').toLocaleDateString('fr-FR')}</strong>
+                    {jours !== null && !expire && <span style={{opacity:0.8}}> ({jours} jours restants)</span>}
+                    {expire && jours !== null && <span style={{opacity:0.8}}> (il y a {Math.abs(jours)} jours)</span>}
+                  </div>
+                )}
+              </div>
+
+              <div style={{padding:24,display:'flex',flexDirection:'column',gap:16}}>
+                {/* Infos */}
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+                  {d.responsable&&(
+                    <div style={{background:'#f8f7f4',borderRadius:10,padding:'10px 14px'}}>
+                      <div style={{fontSize:10,color:'#888780',textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:4}}>Responsable</div>
+                      <div style={{fontSize:13,fontWeight:500,color:'#2c2c2a'}}>{d.responsable}</div>
+                    </div>
+                  )}
+                  {d.commentaire&&(
+                    <div style={{background:'#f8f7f4',borderRadius:10,padding:'10px 14px'}}>
+                      <div style={{fontSize:10,color:'#888780',textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:4}}>Notes</div>
+                      <div style={{fontSize:13,color:'#5f5e5a'}}>{d.commentaire}</div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Fichier */}
+                {d.fichier_url&&(
+                  <div>
+                    <div style={{fontSize:11,fontWeight:500,color:'#888780',textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:8}}>Document importé</div>
+                    <a href={d.fichier_url} target="_blank" rel="noreferrer"
+                      style={{display:'flex',alignItems:'center',gap:10,padding:'12px 16px',borderRadius:10,border:'0.5px solid #afa9ec',background:'#eeedfe',textDecoration:'none',color:'#534ab7'}}>
+                      <i className="ti ti-file" style={{fontSize:20}}/>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:13,fontWeight:500}}>Ouvrir / Télécharger le document</div>
+                        <div style={{fontSize:11,opacity:0.7}}>Cliquez pour ouvrir dans un nouvel onglet</div>
+                      </div>
+                      <i className="ti ti-external-link" style={{fontSize:16}}/>
+                    </a>
+                  </div>
+                )}
+
+                {/* Renouvellement */}
+                {(expire||bientot)&&(
+                  <div style={{background:expire?'#fcebeb':'#faeeda',borderRadius:12,padding:'14px 16px',border:`0.5px solid ${expire?'#f09595':'#fac775'}`}}>
+                    <div style={{fontSize:13,fontWeight:600,color:expire?'#a32d2d':'#854f0b',marginBottom:8}}>
+                      {expire?'Ce document est expiré — renouvelez-le':'Ce document expire bientôt — anticipez le renouvellement'}
+                    </div>
+                    <button onClick={()=>{
+                      setModalDocDetail(null)
+                      // Pré-remplir le formulaire avec les infos du doc à renouveler
+                      setFormDoc({nom:d.nom,categorie:d.categorie,date_expiration:'',commentaire:'Renouvellement de: '+d.nom,responsable:d.responsable||'',categorie_autre:''})
+                      setPmsUploadFile(null)
+                      showToast('Formulaire pré-rempli pour le renouvellement')
+                    }} style={{...btnP,justifyContent:'center',width:'100%',background:expire?'#a32d2d':'#854f0b'}}>
+                      <i className="ti ti-refresh"/>Renouveler ce document
+                    </button>
+                    <div style={{fontSize:11,color:expire?'#791f1f':'#633806',marginTop:8,textAlign:'center'}}>
+                      L ancien document sera conservé dans l historique ci-dessous
+                    </div>
+                  </div>
+                )}
+
+                {/* Historique même catégorie */}
+                {historique.length>0&&(
+                  <div>
+                    <div style={{fontSize:11,fontWeight:500,color:'#888780',textTransform:'uppercase',letterSpacing:'0.5px',marginBottom:10}}>
+                      Historique — {historique.length} version(s) precedente(s)
+                    </div>
+                    {historique.map(h=>{
+                      const hExpire = estExpire(h.date_expiration)
+                      return (
+                        <div key={h.id} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',borderRadius:10,background:'#f8f7f4',border:'0.5px solid #e2e0d8',marginBottom:6,opacity:0.8}}>
+                          <i className="ti ti-history" style={{color:'#888780',fontSize:14,flexShrink:0}}/>
+                          <div style={{flex:1}}>
+                            <div style={{fontSize:12,fontWeight:500,color:'#2c2c2a'}}>{h.nom}</div>
+                            <div style={{fontSize:11,color:'#888780'}}>
+                              {h.date_expiration&&<span style={{color:hExpire?'#a32d2d':'#888780'}}>
+                                {hExpire?'Expire le ':'Valide jusqu au '}{new Date(h.date_expiration+'T12:00:00').toLocaleDateString('fr-FR')}
+                              </span>}
+                              {h.responsable&&<span> • {h.responsable}</span>}
+                            </div>
+                          </div>
+                          {h.fichier_url&&(
+                            <a href={h.fichier_url} target="_blank" rel="noreferrer"
+                              style={{...btnSm,padding:'4px 8px',color:'#534ab7',borderColor:'#afa9ec',background:'#eeedfe',textDecoration:'none',fontSize:11}}>
+                              <i className="ti ti-download"/>
+                            </a>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* Modal carousel photos */}
+      {modalCarousel&&(
+        <div onClick={e=>e.target===e.currentTarget&&setModalCarousel(null)}
+          style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.92)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:800,padding:16}}>
+          <div style={{position:'relative',display:'flex',flexDirection:'column',alignItems:'center',gap:12,maxWidth:'90vw'}}>
+            {/* Image principale */}
+            <img src={modalCarousel.urls[modalCarousel.idx]} alt="photo"
+              style={{maxWidth:'85vw',maxHeight:'75vh',objectFit:'contain',borderRadius:8}}/>
+            {/* Compteur */}
+            <div style={{color:'#fff',fontSize:13,fontWeight:500}}>
+              {modalCarousel.idx+1} / {modalCarousel.urls.length}
+            </div>
+            {/* Navigation */}
+            {modalCarousel.urls.length>1&&(
+              <div style={{display:'flex',gap:12}}>
+                <button onClick={()=>setModalCarousel(p=>({...p,idx:(p.idx-1+p.urls.length)%p.urls.length}))}
+                  style={{padding:'8px 16px',borderRadius:8,background:'rgba(255,255,255,0.15)',border:'none',color:'#fff',fontSize:18,cursor:'pointer'}}>←</button>
+                <button onClick={()=>setModalCarousel(p=>({...p,idx:(p.idx+1)%p.urls.length}))}
+                  style={{padding:'8px 16px',borderRadius:8,background:'rgba(255,255,255,0.15)',border:'none',color:'#fff',fontSize:18,cursor:'pointer'}}>→</button>
+              </div>
+            )}
+            {/* Miniatures */}
+            <div style={{display:'flex',gap:6,flexWrap:'wrap',justifyContent:'center',maxWidth:'85vw'}}>
+              {modalCarousel.urls.map((u,i)=>(
+                <img key={i} src={u} onClick={()=>setModalCarousel(p=>({...p,idx:i}))}
+                  style={{width:48,height:48,objectFit:'cover',borderRadius:6,cursor:'pointer',
+                    border:i===modalCarousel.idx?'2px solid #534ab7':'2px solid transparent',opacity:i===modalCarousel.idx?1:0.6}}/>
+              ))}
+            </div>
+            <button onClick={()=>setModalCarousel(null)}
+              style={{position:'absolute',top:-12,right:-12,width:32,height:32,borderRadius:'50%',background:'#fff',border:'none',cursor:'pointer',fontSize:16}}>✕</button>
+          </div>
+        </div>
+      )}
 
       {/* Modal view photo */}
       {modalViewPhoto&&(
