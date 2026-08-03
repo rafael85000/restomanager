@@ -365,10 +365,11 @@ export default function HACCP() {
       const {default:jsPDF} = await import('jspdf')
       const doc = new jsPDF({ orientation, unit:'mm', format:[docW, docH] })
       const toP = mm => mm * 2.835
+      const normPdf = s => (s||'').replace(/\u0152/g,'OE').replace(/\u0153/g,'oe').replace(/\u2019/g,"'").replace(/\u201C/g,'"').replace(/\u201D/g,'"')
 
       // MÊMES calculs que la prévisualisation
       const headerH = docH * 0.28
-      const footerH = Math.max(3, docH * 0.06)
+      const footerH = Math.max(4, docH * 0.06)
       const bodyH   = docH - headerH - footerH
       const padH    = Math.max(2, Math.min(5, docW * 0.04))
 
@@ -381,8 +382,15 @@ export default function HACCP() {
       const hasPoids = !!poids
       const hasLot = !!lotNum
       const hasIng = ingList.length>0
-      const needed = lBase+dBase*1.2 + gBase + lBase+dlcBase*1.2 + (hasPoids?gBase*2+lBase+pBase*1.2:0) + (hasLot?gBase*2+lBase+dBase*1.2:0) + (hasIng?gBase*2+lBase+Math.min(4,lBase*0.8)*3:0)
-      const asc = Math.min(1.0, (bodyH * 0.72) / needed)
+      const ingMmBase = Math.max(4.0, Math.min(6.2, docH*0.068))
+      const neededSansIng = lBase+dBase*1.2 + gBase + lBase+dlcBase*1.2 + (hasPoids?gBase*2+lBase+pBase*1.2:0) + (hasLot?gBase*2+lBase+dBase*1.2:0)
+      const needed = neededSansIng + (hasIng?gBase*2+lBase*0.85+ingMmBase*1.6*2:0)
+      const asc = Math.min(0.95, (bodyH*0.82)/needed)
+      const espacePourIng = Math.max(0, bodyH*0.82 - neededSansIng*asc - (hasIng?gBase*asc*2+lBase*asc*0.85:0))
+      const totalCharsIng = ingList.filter(ing=>ing.produits&&(ing.produits.nom||'').trim()!=='').reduce((acc,ing,i)=>acc+(ing.produits.nom||'').length+(i>0?2:0),0)
+     const charsParLigne = Math.max(1, Math.floor((docW-padH*2)/(ingMmBase*asc*0.48)))
+      const nbLignesIngEst = Math.max(1, Math.ceil(totalCharsIng/charsParLigne))
+     const ingMmAuto = hasIng ? Math.min(ingMmBase*asc, Math.max(1.6, espacePourIng/(nbLignesIngEst*3.0))) : ingMmBase*asc
 
       const lMm = lBase * asc
       const dMm = dBase * asc
@@ -391,7 +399,7 @@ export default function HACCP() {
       const gMm = gBase * asc
 
       // Taille titre
-      const titleMm = Math.min(16, Math.max(5, (docW * 0.85) / Math.max(formEtiq.produit_nom.length * 0.55, 3)))
+      const titleMm = Math.min(12, Math.max(4, docW / Math.max(formEtiq.produit_nom.length * 0.65, 4)))
 
       for (let i=0; i<nb; i++) {
         if (i>0) doc.addPage([docW, docH], orientation)
@@ -402,7 +410,7 @@ export default function HACCP() {
         doc.setTextColor(255,255,255)
         doc.setFont('helvetica','bold')
         doc.setFontSize(toP(titleMm))
-        const nomLines = doc.splitTextToSize(formEtiq.produit_nom.toUpperCase(), docW-padH*2)
+        const nomLines = doc.splitTextToSize(normPdf(formEtiq.produit_nom).toUpperCase(), docW-padH*2)
         const lineH = titleMm*1.25
         const sy = headerH/2 - (nomLines.length-1)*lineH/2 + titleMm*0.35
         nomLines.forEach((l,li)=>doc.text(l, docW/2, sy+li*lineH, {align:'center'}))
@@ -413,12 +421,12 @@ export default function HACCP() {
           lMm + dlcMm*1.2 +
           (hasPoids ? gMm*2 + lMm + pMm*1.2 : 0) +
           (hasLot ? gMm*2 + lMm + dMm*1.2 : 0) +
-          (ingList.length>0 ? gMm*1.5 + lMm*0.8 + lMm*0.9 + Math.min(3.5,docH*0.04)*1.4*3 : 0)
+          (ingList.length>0 ? gMm*2 + lMm*0.85 + (ingMmBase*asc)*1.6*2 : 0)
         let y = headerH + (bodyH - totalH)/2 + lMm
 
         // FABRIQUE LE
         doc.setFontSize(toP(lMm)); doc.setFont('helvetica','bold'); doc.setTextColor(136,135,128)
-        doc.text('FABRIQUE LE', docW/2, y, {align:'center'})
+        doc.text('FABRIQU\u00C9 LE', docW/2, y, {align:'center'})
         y += lMm*0.8
         doc.setFontSize(toP(dMm)); doc.setFont('helvetica','bold'); doc.setTextColor(26,26,26)
         doc.text(fabFr, docW/2, y+dMm*0.75, {align:'center'})
@@ -435,7 +443,7 @@ export default function HACCP() {
         // POIDS NET
         if (hasPoids) {
           y += gMm*2
-          doc.setDrawColor(220,220,220); doc.line(padH,y,docW-padH,y)
+         doc.setDrawColor(160,160,160); doc.setLineWidth(0.2); doc.line(padH,y,docW-padH,y)
           y += gMm + lMm
           doc.setFontSize(toP(lMm)); doc.setFont('helvetica','bold'); doc.setTextColor(136,135,128)
           doc.text('POIDS NET', docW/2, y, {align:'center'})
@@ -447,46 +455,64 @@ export default function HACCP() {
 
         // LOT
         if (hasLot) {
-          y += gMm*2
-          doc.setDrawColor(220,220,220); doc.line(padH,y,docW-padH,y)
+          y += gMm*1
+          doc.setDrawColor(160,160,160); doc.setLineWidth(0.2); doc.line(padH,y,docW-padH,y)
           y += gMm + lMm
           doc.setFontSize(toP(lMm)); doc.setFont('helvetica','bold'); doc.setTextColor(136,135,128)
           doc.text('LOT', docW/2, y, {align:'center'})
           y += lMm*0.8
-          doc.setFontSize(toP(dMm)); doc.setFont('helvetica','bold'); doc.setTextColor(83,74,183)
+         doc.setFontSize(toP(dMm)); doc.setFont('helvetica','bold'); doc.setTextColor(83,74,183)
           doc.text(lotNum, docW/2, y+dMm*0.75, {align:'center'})
-          // Pas d'affichage de la production sous le LOT
+         y += hasIng ? dMm*1.1 : dMm*2.2
         }
 
         // INGRÉDIENTS
         if (ingList.length > 0) {
           y += gMm*2
-          doc.setDrawColor(220,220,220); doc.line(padH,y,docW-padH,y)
+         doc.setDrawColor(160,160,160); doc.setLineWidth(0.2); doc.line(padH,y,docW-padH,y)
           y += gMm + lMm*0.8
           doc.setFontSize(toP(lMm*0.8)); doc.setFont('helvetica','bold'); doc.setTextColor(136,135,128)
           doc.text('INGREDIENTS', docW/2, y, {align:'center'})
           y += lMm
-          // Construire la liste
-          const ingMm = Math.max(2, Math.min(4, docH*0.045))
-          doc.setFontSize(toP(ingMm))
-          const ingText = ingList.map(ing=>{
-            const nm = ing.produits?.nom || ''
-            const isAlerg = (ing.produits?.allergenes||[]).length > 0
-            return isAlerg ? nm.toUpperCase() : nm
-          }).join(', ')
-          const ingLines = doc.splitTextToSize(ingText, docW-padH*2)
-          ingLines.forEach((l,li)=>{
-            doc.setTextColor(44,44,42)
-            doc.text(l, docW/2, y+ingMm*0.8+li*ingMm*1.3, {align:'center'})
+          // Ingredients: construire puis rendre
+          const ingMmFinal = ingMmAuto
+          const ingFiltered2 = ingList.filter(ing=>ing.produits&&(ing.produits.nom||'').trim()!=='')
+          // Build segments - virgule collée au nom (même segment = même font = pas de bug encodage jsPDF)
+          const ingSegs = []
+          ingFiltered2.forEach((ing, idx2) => {
+            const nm = (ing.produits.nom||'').trim()
+            const isA = (ing.produits.allergenes||[]).length > 0
+            const raw = isA ? normPdf(nm).toUpperCase() : normPdf(nm).charAt(0).toUpperCase()+normPdf(nm).slice(1).toLowerCase()
+            const disp = idx2 > 0 ? ', ' + raw : raw
+            ingSegs.push({t:disp, b:isA})
           })
+          // Render segments
+let rx = padH, ry = y + ingMmFinal*0.9
+const rLineH = ingMmFinal * 1.6
+const rMaxW = docW - padH*2
+for (let ti = 0; ti < ingSegs.length; ti++) {
+            const seg = ingSegs[ti]
+            doc.setFontSize(toP(ingMmFinal))
+            doc.setFont('helvetica', seg.b ? 'bold' : 'normal') // font SET AVANT getTextWidth
+            doc.setTextColor(44,44,42)
+            const sw = doc.getTextWidth(seg.t)
+            if (rx > padH && rx + sw > padH + rMaxW) {
+              if (seg.t === ', ') { rx = padH; ry += rLineH; continue } // virgule en fin de ligne → sautée
+              rx = padH; ry += rLineH
+            }
+            doc.text(seg.t, rx, ry)
+            rx += sw
+          }
         }
-
         // FOOTER
-        doc.setFillColor(245,245,245); doc.rect(0,docH-footerH,docW,footerH,'F')
-        doc.setDrawColor(220,220,220); doc.line(0,docH-footerH,docW,docH-footerH)
-        doc.setFontSize(toP(Math.max(2,lMm*0.8))); doc.setFont('helvetica','normal'); doc.setTextColor(170,170,170)
-        if(userConnecte) doc.text(userConnecte, padH, docH-0.8)
-        doc.text(format.dim, docW-padH, docH-0.8, {align:'right'})
+        doc.setFillColor(235,235,235); doc.rect(0,docH-footerH,docW,footerH,'F')
+        doc.setDrawColor(160,160,160); doc.setLineWidth(0.2); doc.line(0,docH-footerH,docW,docH-footerH)
+        const footerFontMm = Math.max(3.2, footerH * 0.38)
+        const footerY = docH - footerH*0.5 + footerFontMm*0.35
+        doc.setFontSize(toP(footerFontMm)); doc.setFont('helvetica','bold'); doc.setTextColor(40,40,40)
+        if(userConnecte) doc.text(normPdf(userConnecte), padH, footerY)
+        doc.setFont('helvetica','normal'); doc.setTextColor(100,100,100)
+        doc.text(format.dim, docW-padH, footerY, {align:'right'})
       }
 
       const pdfBlob = doc.output('blob')
@@ -815,6 +841,7 @@ export default function HACCP() {
     const recetteLigne = lignesProduits.find(l=>l.type==='recette')
     const recetteId = recetteLigne?.id || null
     const recetteNom = recetteLigne?.nom || null
+    console.log('creerLot - recetteLigne:', recetteLigne, 'recetteId:', recetteId)
 
     // Upload toutes les photos avec index unique
     let photoUrl = null
@@ -834,7 +861,7 @@ export default function HACCP() {
 
     const {error} = await supabase.from('haccp_lots').insert([{
       numero_lot: num,
-      produit_nom: prodNom||recetteNom||null,
+      produit_nom: prodNom||null, // Ne pas mettre le nom de la recette dans produit_nom
       recette_id: recetteId,
       date_production: formLot.date_production||null,
       photo_url: photoUrl,
@@ -1496,14 +1523,39 @@ export default function HACCP() {
                     const lot=lots.find(l=>l.id===e.target.value)
                     const recetteNom=lot?.recettes?.nom||''
                     setFormEtiq({...formEtiq,lot_id:e.target.value,lot_numero:lot?lot.numero_lot:'',lot_recette:recetteNom})
-                    // Charger les ingrédients de la recette liée
-                    if(lot?.recette_id||lot?.recettes?.id) {
-                      const rid = lot.recette_id || lots.find(l=>l.id===e.target.value)?.recette_id
-                      if(rid) {
-                        supabase.from('recette_ingredients').select('*,produits(id,nom,allergenes)').eq('recette_id',rid).order('poids',{ascending:false})
-                          .then(({data})=>setEtiqIngredients(data||[]))
-                      }
-                    } else { setEtiqIngredients([]) }
+                    // Charger les ingrédients via recette_id du lot
+                    const rid = lot?.recette_id || null
+                    if(rid) {
+                      supabase.from('recette_ingredients')
+                        .select('*,produits!recette_ingredients_produit_id_fkey(id,nom,allergenes)')
+                        .eq('recette_id',rid)
+                        .order('poids',{ascending:false})
+                        .then(async ({data,error})=>{
+                          console.log('ingredients loaded:', data, error)
+                          const normalized = await Promise.all((data||[]).map(async (ing) => {
+                            if (ing.produits) return ing
+                            // Sous-recette : récupérer nom + allergènes via recette_id_lie
+                            const srId = ing.recette_id_lie || ing.sous_recette_id
+                            if (!srId) return ing
+                            const {data:srData} = await supabase.from('recettes').select('id,nom').eq('id',srId).single()
+                            const {data:srIngs} = await supabase.from('recette_ingredients')
+                              .select('produits!recette_ingredients_produit_id_fkey(allergenes)')
+                              .eq('recette_id', srId)
+                            const allergenesAuto = (srIngs||[]).flatMap(si=>si.produits?.allergenes||[])
+                            // Charger aussi les allergènes manuels de la recette elle-même
+                            const {data:srRecette} = await supabase.from('recettes').select('allergenes,allergenes_manuels').eq('id',srId).single()
+                            const allergenesManuels = srRecette?.allergenes_manuels||[]
+                            // Convertir les IDs manuels ("a5") en noms ("Arachides") pour cohérence
+                            const ALERG_MAP = {a1:'Gluten',a2:'Crustaces',a3:'Oeufs',a4:'Poissons',a5:'Arachides',a6:'Soja',a7:'Lait',a8:'Fruits a coque',a9:'Celeri',a10:'Moutarde',a11:'Sesame',a12:'Sulfites',a13:'Lupin',a14:'Mollusques'}
+                            const allergenesManuelsNoms = allergenesManuels.map(id=>ALERG_MAP[id]||id).filter(Boolean)
+                            const allergenes = [...new Set([...allergenesAuto, ...allergenesManuelsNoms])]
+                            return {...ing, produits:{id:srId, nom:srData?.nom||'Sous-recette', allergenes}}
+                          }))
+                          setEtiqIngredients(normalized)
+                        })
+                    } else {
+                      setEtiqIngredients([])
+                    }
                   }} style={inp}>
                     <option value="">Aucun lot</option>
                     {lots.slice(0,50).map(l=>(
@@ -1513,22 +1565,22 @@ export default function HACCP() {
                   {formEtiq.lot_id&&<div style={{fontSize:11,color:'#534ab7',marginTop:3,lineHeight:1.6}}>
                     N° lot : <strong>{formEtiq.lot_numero}</strong>{formEtiq.lot_recette?' — '+formEtiq.lot_recette:''}
                   </div>}
+                {formEtiq.lot_id&&formEtiq.lot_recette===''&&<div style={{fontSize:11,color:'#b4b2a9',marginTop:4}}>Ce lot n'est pas lié à une production — pas d'ingrédients disponibles</div>}
                 {formEtiq.lot_id&&etiqIngredients.length>0&&(
                   <div style={{marginTop:8}}>
                     <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:13,color:'#2c2c2a'}}>
                       <input type="checkbox" checked={formEtiq.afficher_ingredients||false}
                         onChange={e=>setFormEtiq({...formEtiq,afficher_ingredients:e.target.checked})}
                         style={{width:16,height:16,cursor:'pointer'}}/>
-                      Afficher les ingrédients sur l'étiquette
+                      Afficher les ingrédients (allergènes en GRAS MAJUSCULES)
                     </label>
                     {formEtiq.afficher_ingredients&&(
                       <div style={{marginTop:6,background:'#f8f7f4',borderRadius:8,padding:'8px 12px',fontSize:11,color:'#5f5e5a',lineHeight:1.6}}>
-                        {etiqIngredients.map((ing,i)=>{
-                          const allergs = (ing.produits?.allergenes||[]).map(aid=>ALLERGENES_14.find(a=>a.id===aid)?.nom).filter(Boolean)
-                          const isAlerg = allergs.length>0
+                        {[...etiqIngredients].sort((a,b)=>(parseFloat(b.poids)||0)-(parseFloat(a.poids)||0)).map((ing,i)=>{
+                          const isAlerg = (ing.produits?.allergenes||[]).length>0
                           return <span key={i}>
                             {i>0&&', '}
-                            <span style={{fontWeight:isAlerg?700:400,textDecoration:isAlerg?'underline':'none',color:isAlerg?'#2c2c2a':'#5f5e5a'}}>
+                            <span style={{fontWeight:isAlerg?700:400,color:'#2c2c2a',textTransform:isAlerg?'uppercase':'none'}}>
                               {ing.produits?.nom||''}
                             </span>
                           </span>
@@ -1594,9 +1646,17 @@ export default function HACCP() {
                   const hasPoids = !!(formEtiq.poids&&formEtiq.poids!=='')
                   const hasLot = !!formEtiq.lot_numero
                   const ingListPrev = (formEtiq.afficher_ingredients&&etiqIngredients.length>0) ? [...etiqIngredients].sort((a,b)=>(parseFloat(b.poids)||0)-(parseFloat(a.poids)||0)) : []
+                  const ingPx = Math.max(6, Math.min(10, pxH*0.045))
                   const hasIng = ingListPrev.length>0
-                  const needed = lBase+dBase*1.2 + gBase + lBase+dlcBase*1.2 + (hasPoids?gBase*2+lBase+pBase*1.2:0) + (hasLot?gBase*2+lBase+dBase*1.2:0) + (hasIng?gBase*2+lBase*0.8+lBase*0.75*3:0)
-                  const asc = Math.min(1.0, (bodyPx*0.72)/needed)
+                  const ingMmBase = Math.max(4.0, Math.min(6.2, docH*0.068))
+                  const ingPxBase = Math.max(8, Math.min(14, pxH*0.068))
+                  const neededSansIng = lBase+dBase*1.2 + gBase + lBase+dlcBase*1.2 + (hasPoids?gBase*2+lBase+pBase*1.2:0) + (hasLot?gBase*2+lBase+dBase*1.2:0)
+                  const needed = neededSansIng + (hasIng?gBase*2+lBase*0.85+ingPxBase*1.6*2:0)
+                  const asc = Math.min(0.95, (bodyPx*0.82)/needed)
+                  const espacePourIngPx = Math.max(0, bodyPx*0.82 - neededSansIng*asc - (hasIng?gBase*asc*2+lBase*asc*0.85:0))
+                  const padPx = Math.max(2, Math.round(pxW*0.04))
+                  const nbLignesEstPx = Math.max(1, Math.ceil((ingListPrev.length||1) / Math.max(1, Math.floor((pxW-padPx*2) / (ingPxBase*asc*3.5)))))
+                  const ingPxAuto = hasIng ? Math.min(ingPxBase*asc, Math.max(6, espacePourIngPx/(nbLignesEstPx*1.8))) : ingPxBase*asc
                   const lPx = lBase*asc
                   const dPx = dBase*asc
                   const dlcPx = dlcBase*asc
@@ -1621,19 +1681,29 @@ export default function HACCP() {
                             <span style={{fontSize:lPx,fontWeight:700,color:'#888',textTransform:'uppercase'}}>DLC</span>
                             <span style={{fontSize:dlcPx,fontWeight:900,color:'#cc2222'}}>{dlcPrev}</span>
                           </div>
-                          {hasPoids&&<div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:1,borderTop:'0.5px solid #e0e0e0',paddingTop:Math.max(2,gPx),width:'100%'}}>
+                          {hasPoids&&<div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:1,borderTop:'1px solid #aaa',paddingTop:Math.max(2,gPx),width:'100%'}}>
                             <span style={{fontSize:lPx,fontWeight:700,color:'#888',textTransform:'uppercase'}}>POIDS NET</span>
                             <span style={{fontSize:pPx,fontWeight:900,color:'#1a1a1a'}}>{formEtiq.poids} {formEtiq.unite_poids||'g'}</span>
                           </div>}
-                          {hasLot&&<div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:1,borderTop:'0.5px solid #e0e0e0',paddingTop:Math.max(2,gPx),width:'100%'}}>
+                          {hasLot&&<div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:1,borderTop:'1px solid #aaa',paddingTop:Math.max(2,gPx),width:'100%'}}>
                             <span style={{fontSize:lPx,fontWeight:700,color:'#888',textTransform:'uppercase'}}>LOT</span>
                             <span style={{fontSize:dPx,fontWeight:700,color:'#534ab7'}}>{formEtiq.lot_numero}</span>
-
+                          </div>}
+                          {hasIng&&<div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:1,borderTop:'1px solid #aaa',paddingTop:Math.max(2,gPx),width:'100%'}}>
+                            <span style={{fontSize:lPx*0.85,fontWeight:700,color:'#888',textTransform:'uppercase',letterSpacing:'0.3px'}}>INGREDIENTS</span>
+                            <div style={{fontSize:ingPxAuto,lineHeight:1.3,textAlign:'center',color:'#2c2c2a',padding:'0 2px',wordBreak:'break-word'}}>
+                              {ingListPrev.filter(ing=>ing.produits&&(ing.produits.nom||'').trim()!=='').map((ing,i)=>{
+                                const nm=(ing.produits?.nom||'').trim()
+                                const isAlerg=(ing.produits?.allergenes||[]).length>0
+                                const nmDisp=isAlerg?nm.toUpperCase():nm.charAt(0).toUpperCase()+nm.slice(1).toLowerCase()
+                                return <span key={i}>{i>0&&<span style={{fontWeight:400}}>, </span>}<span style={{fontWeight:isAlerg?700:400}}>{nmDisp}</span></span>
+                              })}
+                            </div>
                           </div>}
                         </div>
                         <div style={{height:footerPx,background:'#f5f5f5',borderTop:'0.5px solid #ddd',display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 '+pH+'px',flexShrink:0}}>
-                          <span style={{fontSize:Math.max(6,lPx*0.7),color:'#aaa'}}>{userConnecte||''}</span>
-                          <span style={{fontSize:Math.max(6,lPx*0.7),color:'#aaa'}}>{fmt_.dim}</span>
+                          <span style={{fontSize:Math.max(8,footerPx*0.38),color:'#222',fontWeight:700}}>{userConnecte||''}</span>
+                          <span style={{fontSize:Math.max(8,footerPx*0.38),color:'#888'}}>{fmt_.dim}</span>
                         </div>
                       </div>
                       <div style={{fontSize:10,color:'#b4b2a9'}}>{fmt_.imprimante}</div>
@@ -2593,16 +2663,17 @@ export default function HACCP() {
                           const already=lignesProduits.some(l=>l.type==='produit'&&l.nom===val)
                           if(!already) setLignesProduits(prev=>[...prev,{type:'produit',id:match?match.id:'',nom:val}])
                           if(inp2) inp2.value=''
-                        }} style={{...btnSmP,padding:'8px 12px'}}><i className="ti ti-plus"/></button>
+                        }} style={{...btnSmP,padding:'8px 12px'}}><i className="ti ti-plus"/>Ajouter</button>
                       </div>
                       {lignesProduits.filter(l=>l.type==='produit').length>0&&(
-                        <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
+                        <div style={{display:'flex',flexDirection:'column',gap:4}}>
                           {lignesProduits.filter(l=>l.type==='produit').map((l,i)=>(
-                            <span key={i} style={{display:'flex',alignItems:'center',gap:4,background:'#e6f1fb',color:'#0c447c',borderRadius:20,padding:'3px 10px',fontSize:12,fontWeight:500}}>
-                              {l.nom}
+                            <div key={i} style={{display:'flex',alignItems:'center',gap:8,background:'#e6f1fb',borderRadius:8,padding:'5px 10px'}}>
+                              <i className="ti ti-box" style={{color:'#0c447c',fontSize:12}}/>
+                              <span style={{flex:1,fontSize:12,fontWeight:500,color:'#0c447c'}}>{l.nom}</span>
                               <button onClick={()=>setLignesProduits(prev=>prev.filter(x=>!(x.type==='produit'&&x.nom===l.nom)))}
-                                style={{background:'none',border:'none',cursor:'pointer',color:'#0c447c',padding:0,fontSize:12,lineHeight:1}}>✕</button>
-                            </span>
+                                style={{background:'none',border:'none',cursor:'pointer',color:'#a32d2d',fontSize:11,padding:'2px 4px'}}>✕</button>
+                            </div>
                           ))}
                         </div>
                       )}
@@ -2612,27 +2683,29 @@ export default function HACCP() {
                     <div>
                       <div style={{fontSize:12,color:'#888780',marginBottom:5}}>Fiches recettes / productions <span style={{fontWeight:400,fontSize:11}}>(optionnel — plusieurs possibles)</span></div>
                       <div style={{display:'flex',gap:6,marginBottom:6}}>
-                        <select value={selectRecetteId} onChange={e=>setSelectRecetteId(e.target.value)} style={{...inp,flex:1}}>
-                          <option value="">Sélectionner une recette...</option>
-                          {recettes.map(r=><option key={r.id} value={r.id}>{r.nom}</option>)}
-                        </select>
-                        <button onClick={()=>{
-                          if(!selectRecetteId) return
-                          const r=recettes.find(x=>x.id===selectRecetteId)
+                        <select value={selectRecetteId} onChange={e=>{
+                          const rid=e.target.value
+                          setSelectRecetteId(rid)
+                          if(!rid) return
+                          const r=recettes.find(x=>x.id===rid)
                           if(!r) return
                           const already=lignesProduits.some(l=>l.type==='recette'&&l.id===r.id)
                           if(!already) setLignesProduits(prev=>[...prev,{type:'recette',id:r.id,nom:r.nom}])
-                          setSelectRecetteId('')
-                        }} style={{...btnSmP,padding:'8px 12px'}}><i className="ti ti-plus"/></button>
+                          setTimeout(()=>setSelectRecetteId(''),100)
+                        }} style={{...inp,flex:1}}>
+                          <option value="">Sélectionner une recette...</option>
+                          {recettes.map(r=><option key={r.id} value={r.id}>{r.nom}</option>)}
+                        </select>
                       </div>
                       {lignesProduits.filter(l=>l.type==='recette').length>0&&(
-                        <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
+                        <div style={{display:'flex',flexDirection:'column',gap:6}}>
                           {lignesProduits.filter(l=>l.type==='recette').map((l,i)=>(
-                            <span key={i} style={{display:'flex',alignItems:'center',gap:4,background:'#eeedfe',color:'#534ab7',borderRadius:20,padding:'3px 10px',fontSize:12,fontWeight:500}}>
-                              {l.nom}
+                            <div key={i} style={{display:'flex',alignItems:'center',gap:8,background:'#eeedfe',borderRadius:10,padding:'6px 12px'}}>
+                              <i className="ti ti-file-text" style={{color:'#534ab7',fontSize:13}}/>
+                              <span style={{flex:1,fontSize:13,fontWeight:500,color:'#534ab7'}}>{l.nom}</span>
                               <button onClick={()=>setLignesProduits(prev=>prev.filter(x=>!(x.type==='recette'&&x.id===l.id)))}
-                                style={{background:'none',border:'none',cursor:'pointer',color:'#534ab7',padding:0,fontSize:12,lineHeight:1}}>✕</button>
-                            </span>
+                                style={{background:'none',border:'none',cursor:'pointer',color:'#a32d2d',fontSize:12,padding:'2px 4px'}}>✕ Retirer</button>
+                            </div>
                           ))}
                         </div>
                       )}
