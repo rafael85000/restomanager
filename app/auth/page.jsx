@@ -10,6 +10,10 @@ export default function Auth() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetSent, setResetSent] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetError, setResetError] = useState('');
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -43,14 +47,28 @@ export default function Auth() {
     }
   }
 
+  async function handleReset(e) {
+    e.preventDefault()
+    if (!resetEmail) { setResetError('Saisissez votre adresse email'); return }
+    setResetLoading(true); setResetError('')
+    const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
+      redirectTo: window.location.origin + '/auth/reset'
+    })
+    setResetLoading(false)
+    if (error) { setResetError(traduireErreur(error.message)); return }
+    setResetSent(true)
+  }
+
   function traduireErreur(msg) {
     if (msg.includes('Invalid login credentials')) return 'Email ou mot de passe incorrect.';
     if (msg.includes('already registered')) return 'Cet email est déjà utilisé. Connectez-vous plutôt.';
     if (msg.includes('Password should be at least')) return 'Le mot de passe doit contenir au moins 6 caractères.';
+    if (msg.includes('For security purposes')) return 'Trop de tentatives. Attendez quelques minutes.';
     return msg;
   }
 
   const inpStyle = { width: '100%', padding: '12px 14px', borderRadius: 8, border: '0.5px solid #3a3a3e', background: '#2c2b2f', color: '#fff', fontSize: 14, outline: 'none', boxSizing: 'border-box' }
+  const btnRetour = { background: 'none', border: 'none', color: '#666460', fontSize: 13, cursor: 'pointer', marginTop: 8 }
 
   return (
     <div style={{ minHeight: '100vh', background: '#1c1b1f', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}>
@@ -68,49 +86,98 @@ export default function Auth() {
 
       <div style={{ width: '100%', maxWidth: 380 }}>
 
-        {/* Tabs */}
-        <div style={{ display: 'flex', gap: 8, marginBottom: 24, background: '#2c2b2f', borderRadius: 10, padding: 4 }}>
-          <button type="button" onClick={() => { setMode('login'); setError(''); }}
-            style={{ flex: 1, padding: '8px', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', border: 'none', background: mode === 'login' ? '#534ab7' : 'transparent', color: mode === 'login' ? '#fff' : '#666460' }}>
-            Se connecter
-          </button>
-          <button type="button" onClick={() => { setMode('signup'); setError(''); }}
-            style={{ flex: 1, padding: '8px', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', border: 'none', background: mode === 'signup' ? '#534ab7' : 'transparent', color: mode === 'signup' ? '#fff' : '#666460' }}>
-            Créer un compte
-          </button>
-        </div>
+        {/* ── MOT DE PASSE OUBLIÉ ── */}
+        {mode === 'reset' && (
+          <div>
+            <div style={{ fontSize: 15, color: '#a8a6a0', textAlign: 'center', marginBottom: 6 }}>Mot de passe oublié</div>
+            <div style={{ fontSize: 12, color: '#555450', textAlign: 'center', marginBottom: 24 }}>Un lien de réinitialisation sera envoyé à votre adresse email.</div>
 
-        <form onSubmit={handleSubmit}>
-          {mode === 'signup' && (
-            <div style={{ marginBottom: 14 }}>
-              <div style={{ fontSize: 12, color: '#a8a6a0', marginBottom: 6 }}>Votre nom</div>
-              <input value={nom} onChange={e => setNom(e.target.value)} required placeholder="Nom complet" style={inpStyle} />
+            {resetSent ? (
+              <div style={{ background: '#1a3a1a', border: '0.5px solid #27500a', borderRadius: 10, padding: '16px 18px', textAlign: 'center' }}>
+                <i className="ti ti-circle-check" style={{ fontSize: 32, color: '#4caf50', display: 'block', marginBottom: 10 }} />
+                <div style={{ fontSize: 14, color: '#a8f0a8', fontWeight: 500, marginBottom: 6 }}>Email envoyé !</div>
+                <div style={{ fontSize: 12, color: '#4a7a4a', lineHeight: 1.6 }}>Vérifiez votre boîte mail et cliquez sur le lien pour réinitialiser votre mot de passe.</div>
+              </div>
+            ) : (
+              <form onSubmit={handleReset}>
+                {resetError && <div style={{ background: '#3a1a1a', border: '0.5px solid #e05858', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#e05858', marginBottom: 14 }}>{resetError}</div>}
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 12, color: '#a8a6a0', marginBottom: 6 }}>Adresse email</div>
+                  <input type="email" value={resetEmail} onChange={e => setResetEmail(e.target.value)} required placeholder="vous@exemple.fr" style={inpStyle} />
+                </div>
+                <button type="submit" disabled={resetLoading}
+                  style={{ width: '100%', padding: 12, background: '#534ab7', color: '#fff', border: 'none', borderRadius: 8, fontSize: 15, fontWeight: 500, cursor: resetLoading ? 'wait' : 'pointer' }}>
+                  {resetLoading ? 'Envoi…' : 'Envoyer le lien'}
+                </button>
+              </form>
+            )}
+
+            <div style={{ textAlign: 'center', marginTop: 16 }}>
+              <button onClick={() => { setMode('login'); setResetSent(false); setResetEmail(''); setResetError('') }} style={btnRetour}>
+                ← Retour à la connexion
+              </button>
             </div>
-          )}
-          <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 12, color: '#a8a6a0', marginBottom: 6 }}>Adresse email</div>
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)} required placeholder="vous@exemple.fr" style={inpStyle} />
           </div>
-          <div style={{ marginBottom: 20 }}>
-            <div style={{ fontSize: 12, color: '#a8a6a0', marginBottom: 6 }}>Mot de passe</div>
-            <input type="password" value={password} onChange={e => setPassword(e.target.value)} required minLength={6} placeholder="••••••••" style={inpStyle} />
-          </div>
+        )}
 
-          {error && (
-            <div style={{ background: '#3a1a1a', border: '0.5px solid #e05858', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#e05858', marginBottom: 14 }}>{error}</div>
-          )}
-
-          {mode === 'signup' && (
-            <div style={{ fontSize: 12, color: '#555450', marginBottom: 14 }}>
-              Vous pourrez créer votre établissement et choisir votre abonnement juste après.
+        {/* ── LOGIN / SIGNUP ── */}
+        {mode !== 'reset' && (
+          <>
+            {/* Tabs */}
+            <div style={{ display: 'flex', gap: 8, marginBottom: 24, background: '#2c2b2f', borderRadius: 10, padding: 4 }}>
+              <button type="button" onClick={() => { setMode('login'); setError(''); }}
+                style={{ flex: 1, padding: '8px', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', border: 'none', background: mode === 'login' ? '#534ab7' : 'transparent', color: mode === 'login' ? '#fff' : '#666460' }}>
+                Se connecter
+              </button>
+              <button type="button" onClick={() => { setMode('signup'); setError(''); }}
+                style={{ flex: 1, padding: '8px', borderRadius: 8, fontSize: 13, fontWeight: 500, cursor: 'pointer', border: 'none', background: mode === 'signup' ? '#534ab7' : 'transparent', color: mode === 'signup' ? '#fff' : '#666460' }}>
+                Créer un compte
+              </button>
             </div>
-          )}
 
-          <button type="submit" disabled={loading}
-            style={{ width: '100%', padding: 12, background: '#534ab7', color: '#fff', border: 'none', borderRadius: 8, fontSize: 15, fontWeight: 500, cursor: loading ? 'wait' : 'pointer' }}>
-            {loading ? 'Chargement...' : mode === 'login' ? 'Se connecter' : 'Créer mon compte'}
-          </button>
-        </form>
+            <form onSubmit={handleSubmit}>
+              {mode === 'signup' && (
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 12, color: '#a8a6a0', marginBottom: 6 }}>Votre nom</div>
+                  <input value={nom} onChange={e => setNom(e.target.value)} required placeholder="Nom complet" style={inpStyle} />
+                </div>
+              )}
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 12, color: '#a8a6a0', marginBottom: 6 }}>Adresse email</div>
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)} required placeholder="vous@exemple.fr" style={inpStyle} />
+              </div>
+              <div style={{ marginBottom: mode === 'login' ? 8 : 20 }}>
+                <div style={{ fontSize: 12, color: '#a8a6a0', marginBottom: 6 }}>Mot de passe</div>
+                <input type="password" value={password} onChange={e => setPassword(e.target.value)} required minLength={6} placeholder="••••••••" style={inpStyle} />
+              </div>
+
+              {/* Lien mot de passe oublié — uniquement en mode login */}
+              {mode === 'login' && (
+                <div style={{ textAlign: 'right', marginBottom: 16 }}>
+                  <button type="button" onClick={() => { setMode('reset'); setResetEmail(email); setError('') }}
+                    style={{ background: 'none', border: 'none', color: '#7b74d4', fontSize: 12, cursor: 'pointer', padding: 0 }}>
+                    Mot de passe oublié ?
+                  </button>
+                </div>
+              )}
+
+              {error && (
+                <div style={{ background: '#3a1a1a', border: '0.5px solid #e05858', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#e05858', marginBottom: 14 }}>{error}</div>
+              )}
+
+              {mode === 'signup' && (
+                <div style={{ fontSize: 12, color: '#555450', marginBottom: 14 }}>
+                  Vous pourrez créer votre établissement et choisir votre abonnement juste après.
+                </div>
+              )}
+
+              <button type="submit" disabled={loading}
+                style={{ width: '100%', padding: 12, background: '#534ab7', color: '#fff', border: 'none', borderRadius: 8, fontSize: 15, fontWeight: 500, cursor: loading ? 'wait' : 'pointer' }}>
+                {loading ? 'Chargement...' : mode === 'login' ? 'Se connecter' : 'Créer mon compte'}
+              </button>
+            </form>
+          </>
+        )}
       </div>
     </div>
   );

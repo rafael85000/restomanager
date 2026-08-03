@@ -23,6 +23,12 @@ export default function AppLayout({ children }) {
   }, [])
 
   useEffect(() => {
+    // Bloquer le bouton retour navigateur
+    window.history.pushState(null, '', window.location.href)
+    window.addEventListener('popstate', () => {
+      window.history.pushState(null, '', window.location.href)
+    })
+
     const membreRaw = localStorage.getItem('membre_actif')
     if (!membreRaw) {
       router.push('/select-user')
@@ -30,6 +36,13 @@ export default function AppLayout({ children }) {
       return
     }
     const membre = JSON.parse(membreRaw)
+    // Vérifier que la session n'est pas trop vieille (8h max)
+    if (membre.ts && Date.now() - membre.ts > 8 * 60 * 60 * 1000) {
+      localStorage.removeItem('membre_actif')
+      router.push('/select-user')
+      setLoading(false)
+      return
+    }
     setMembreActif(membre)
     if (membre.type === 'externe' && window.location.pathname === '/etablissements') {
       router.push('/dashboard')

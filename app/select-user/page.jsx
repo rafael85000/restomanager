@@ -20,10 +20,20 @@ export default function SelectUserPage() {
   const [emailExterne, setEmailExterne] = useState('')
   const [mdpExterne, setMdpExterne] = useState('')
   const [externeErreur, setExterneErreur] = useState('')
+  // Reset PIN gérant
+  const [resetEmail, setResetEmail] = useState('')
+  const [resetSent, setResetSent] = useState(false)
+  const [resetLoading, setResetLoading] = useState(false)
+  const [resetError, setResetError] = useState('')
   const pinRef = useRef(null)
 
   useEffect(() => {
+    // Bloquer le bouton retour navigateur sur cette page
+    window.history.pushState(null, '', window.location.href)
+    const handlePop = () => window.history.pushState(null, '', window.location.href)
+    window.addEventListener('popstate', handlePop)
     charger()
+    return () => window.removeEventListener('popstate', handlePop)
   }, [])
 
   useEffect(() => {
@@ -63,7 +73,7 @@ export default function SelectUserPage() {
     if (!mb?.pin || mb.pin !== pinSaisi) { setPinErreur('Code incorrect'); setPin(''); return }
     const { data: role } = await supabase.from('roles').select('nom, permissions').eq('id', mb.role_id).single()
     localStorage.setItem('membre_actif', JSON.stringify({ id: mb.id, nom: mb.nom, role: role?.nom || '', permissions: role?.permissions || [], ts: Date.now() }))
-    window.location.href = '/dashboard'
+    window.location.replace('/dashboard')
   }
 
   const connexionGerant = async () => {
@@ -81,7 +91,7 @@ export default function SelectUserPage() {
     } else {
       localStorage.setItem('membre_actif', JSON.stringify({ id: 'gerant', nom: 'Gérant', role: 'Propriétaire', permissions: ['tout'], ts: Date.now() }))
     }
-    window.location.href = '/dashboard'
+    window.location.replace('/dashboard')
   }
 
   const connexionExterne = async () => {
@@ -96,7 +106,19 @@ export default function SelectUserPage() {
     const premierEtab = (compteExterne.etablissements_ids || [])[0]
     if (premierEtab) localStorage.setItem('etablissement_actif', premierEtab)
     localStorage.setItem('membre_actif', JSON.stringify({ id: userId, nom: compteExterne.nom, role: 'Accès externe', permissions: compteExterne.permissions || [], type: 'externe', ts: Date.now() }))
-    window.location.href = '/dashboard'
+    window.location.replace('/dashboard')
+  }
+
+  const handleReset = async (e) => {
+    e.preventDefault()
+    if (!resetEmail) { setResetError('Saisissez votre adresse email'); return }
+    setResetLoading(true); setResetError('')
+    const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
+      redirectTo: window.location.origin + '/auth/reset'
+    })
+    setResetLoading(false)
+    if (error) { setResetError('Erreur lors de l envoi. Vérifiez l adresse email.'); return }
+    setResetSent(true)
   }
 
   const deconnexion = async () => {
@@ -104,7 +126,7 @@ export default function SelectUserPage() {
     localStorage.removeItem('membre_actif')
     localStorage.removeItem('etablissement_actif')
     await supabase.auth.signOut()
-    window.location.href = '/auth'
+    window.location.replace('/auth')
   }
 
   const getRoleNom = (roleId) => roles.find(r => r.id === roleId)?.nom || ''
@@ -207,9 +229,16 @@ export default function SelectUserPage() {
         <div style={{ width: '100%', maxWidth: 360 }}>
           <div style={{ fontSize: 15, color: '#a8a6a0', textAlign: 'center', marginBottom: 24 }}>Connexion gérant</div>
           {gerantErreur && <div style={{ background: '#3a1a1a', border: '0.5px solid #e05858', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#e05858', marginBottom: 14 }}>{gerantErreur}</div>}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 8 }}>
             <input type="email" placeholder="Email" value={emailGerant} onChange={e => setEmailGerant(e.target.value)} style={inpStyle} />
             <input type="password" placeholder="Mot de passe" value={mdpGerant} onChange={e => setMdpGerant(e.target.value)} onKeyDown={e => e.key === 'Enter' && connexionGerant()} style={inpStyle} />
+          </div>
+          {/* Mot de passe oublié */}
+          <div style={{ textAlign: 'right', marginBottom: 16 }}>
+            <button onClick={() => { setEtape('reset-gerant'); setResetEmail(emailGerant); setResetSent(false); setResetError('') }}
+              style={{ background: 'none', border: 'none', color: '#7b74d4', fontSize: 12, cursor: 'pointer', padding: 0 }}>
+              Mot de passe oublié ?
+            </button>
           </div>
           <button onClick={connexionGerant} disabled={loadingAuth}
             style={{ width: '100%', padding: 12, borderRadius: 8, border: 'none', background: '#534ab7', color: '#fff', fontSize: 14, fontWeight: 500, cursor: 'pointer', marginBottom: 12 }}>
@@ -217,6 +246,40 @@ export default function SelectUserPage() {
           </button>
           <div style={{ textAlign: 'center' }}>
             <button onClick={() => { setEtape('liste'); setGerantErreur('') }} style={btnRetour}>← Retour</button>
+          </div>
+        </div>
+      )}
+
+      {/* RÉINITIALISATION MDP GÉRANT */}
+      {etape === 'reset-gerant' && (
+        <div style={{ width: '100%', maxWidth: 360 }}>
+          <div style={{ fontSize: 15, color: '#a8a6a0', textAlign: 'center', marginBottom: 6 }}>Mot de passe oublié</div>
+          <div style={{ fontSize: 12, color: '#555450', textAlign: 'center', marginBottom: 24 }}>Un lien de réinitialisation sera envoyé à votre adresse email.</div>
+
+          {resetSent ? (
+            <div style={{ background: '#1a3a1a', border: '0.5px solid #27500a', borderRadius: 10, padding: '16px 18px', textAlign: 'center' }}>
+              <i className="ti ti-circle-check" style={{ fontSize: 32, color: '#4caf50', display: 'block', marginBottom: 10 }} />
+              <div style={{ fontSize: 14, color: '#a8f0a8', fontWeight: 500, marginBottom: 6 }}>Email envoyé !</div>
+              <div style={{ fontSize: 12, color: '#4a7a4a', lineHeight: 1.6 }}>Vérifiez votre boîte mail et cliquez sur le lien pour réinitialiser votre mot de passe.</div>
+            </div>
+          ) : (
+            <form onSubmit={handleReset}>
+              {resetError && <div style={{ background: '#3a1a1a', border: '0.5px solid #e05858', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#e05858', marginBottom: 14 }}>{resetError}</div>}
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 12, color: '#a8a6a0', marginBottom: 6 }}>Adresse email du compte gérant</div>
+                <input type="email" value={resetEmail} onChange={e => setResetEmail(e.target.value)} required placeholder="vous@exemple.fr" style={inpStyle} />
+              </div>
+              <button type="submit" disabled={resetLoading}
+                style={{ width: '100%', padding: 12, background: '#534ab7', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 500, cursor: resetLoading ? 'wait' : 'pointer' }}>
+                {resetLoading ? 'Envoi…' : 'Envoyer le lien'}
+              </button>
+            </form>
+          )}
+
+          <div style={{ textAlign: 'center', marginTop: 16 }}>
+            <button onClick={() => { setEtape('gerant'); setResetSent(false); setResetEmail(''); setResetError('') }} style={btnRetour}>
+              ← Retour
+            </button>
           </div>
         </div>
       )}
