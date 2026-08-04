@@ -519,31 +519,27 @@ for (let ti = 0; ti < ingSegs.length; ti++) {
       const pdfUrl = URL.createObjectURL(pdfBlob)
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
       if (isMobile) {
+        const isChromeIOS = /CriOS/i.test(navigator.userAgent)
         const pdfBase64 = doc.output('datauristring')
-        // Ouvrir dans une nouvelle page avec bouton imprimer intégré
-        const w = window.open('', '_blank')
-        if (w) {
-          w.document.write(`
-            <!DOCTYPE html>
-            <html>
-            <head>
-              <meta name="viewport" content="width=device-width, initial-scale=1">
-              <title>Etiquette</title>
-              <style>
-                body { margin:0; background:#111; display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; font-family:sans-serif; }
-                iframe { width:100vw; height:70vh; border:none; }
-                button { margin-top:16px; padding:14px 32px; background:#534ab7; color:#fff; border:none; border-radius:10px; font-size:16px; font-weight:600; cursor:pointer; }
-              </style>
-            </head>
-            <body>
-              <iframe src="${pdfBase64}"></iframe>
-              <button onclick="window.print()">🖨️ Imprimer</button>
-            </body>
-            </html>
-          `)
-          w.document.close()
+
+        if (isChromeIOS) {
+          // Chrome iOS : télécharger le PDF (seule option possible)
+          const a = document.createElement('a')
+          a.href = pdfBase64
+          a.download = (formEtiq.produit_nom||'etiquette').replace(/[^a-zA-Z0-9]/g,'_')+'.pdf'
+          document.body.appendChild(a)
+          a.click()
+          document.body.removeChild(a)
+          showToast('PDF téléchargé — ouvrez-le dans Fichiers pour imprimer')
+        } else {
+          // Safari iOS et Android : impression native
+          const w = window.open('', '_blank')
+          if (w) {
+            w.document.write(`<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0}iframe{width:100vw;height:80vh;border:none}button{display:block;width:90%;margin:16px auto;padding:14px;background:#534ab7;color:#fff;border:none;border-radius:10px;font-size:16px;font-weight:600}</style></head><body><iframe src="${pdfBase64}"></iframe><button onclick="window.print()">🖨️ Imprimer</button></body></html>`)
+            w.document.close()
+          }
+          showToast('Appuyez sur Imprimer')
         }
-        showToast('Appuyez sur Imprimer')
       }else {
         // Sur desktop : impression directe via iframe
         const iframe = document.createElement('iframe')
