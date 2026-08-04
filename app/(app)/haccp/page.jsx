@@ -519,10 +519,16 @@ for (let ti = 0; ti < ingSegs.length; ti++) {
       const pdfUrl = URL.createObjectURL(pdfBlob)
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
       if (isMobile) {
-        // Sur mobile : ouvrir dans nouvel onglet → bouton Imprimer natif (AirPrint iOS / Android)
-        window.open(pdfUrl, '_blank')
+        // Sur mobile : créer un lien et simuler un clic (contourne le blocage popup)
+        const a = document.createElement('a')
+        a.href = pdfUrl
+        a.target = '_blank'
+        a.rel = 'noopener'
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
         setTimeout(()=>URL.revokeObjectURL(pdfUrl), 10000)
-        showToast('Appuyez sur le bouton Imprimer dans le PDF')
+        showToast('PDF ouvert — appuyez sur Imprimer')
       } else {
         // Sur desktop : impression directe via iframe
         const iframe = document.createElement('iframe')
