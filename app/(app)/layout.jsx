@@ -13,6 +13,14 @@ export default function AppLayout({ children }) {
   const [loading, setLoading] = useState(true)
   const [membreActif, setMembreActif] = useState(null)
   const [lotsRappeles, setLotsRappeles] = useState([])
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   const resetTimer = useCallback(() => {
     if (typeof window === 'undefined') return
@@ -120,32 +128,48 @@ export default function AppLayout({ children }) {
     <div style={{ minHeight: '100vh', background: '#f8f7f4' }}>{children}</div>
   )
 
+  const rappelTop = lotsRappeles.length > 0 ? 48 : 0
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
-      {/* Bandeau rappel de lots — visible sur toutes les pages */}
+      {/* Bandeau rappel de lots */}
       {lotsRappeles.length > 0 && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
           background: '#a32d2d', color: '#fff',
-          padding: '0 20px',
-          height: 48,
+          padding: '0 20px', height: 48,
           display: 'flex', alignItems: 'center', gap: 12,
           boxShadow: '0 2px 8px rgba(163,45,45,0.5)'
         }}>
           <i className="ti ti-alert-triangle" style={{ fontSize: 18, flexShrink: 0 }}/>
-          <div style={{ flex: 1, fontSize: 13, fontWeight: 500 }}>
-            🚨 RAPPEL DE LOT EN COURS : {lotsRappeles.map(l =>
+          <div style={{ flex: 1, fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            🚨 RAPPEL DE LOT : {lotsRappeles.map(l =>
               l.numero_lot + ' (' + (l.produits?.nom || l.produit_nom || '') + ')'
             ).join(' • ')}
           </div>
           <a href="/haccp" style={{ color: '#fff', fontSize: 12, textDecoration: 'underline', whiteSpace: 'nowrap' }}>
-            Voir les lots →
+            Voir →
           </a>
         </div>
       )}
+
       <div style={{ display: 'flex' }}>
-        <Sidebar membreActif={membreActif} rappelTop={lotsRappeles.length > 0 ? 48 : 0} />
-        <main style={{ marginLeft: '240px', flex: 1, minHeight: '100vh', padding: '24px', paddingTop: lotsRappeles.length > 0 ? 72 : 24, background: '#f8f7f4' }}>
+        <Sidebar membreActif={membreActif} rappelTop={rappelTop} />
+        <main style={{
+          // Desktop : marge gauche pour la sidebar
+          // Mobile : pas de marge gauche, padding top pour le header + bottom pour la bottom nav
+          marginLeft: isMobile ? 0 : '240px',
+          flex: 1,
+          minHeight: '100vh',
+          background: '#f8f7f4',
+          paddingTop: isMobile
+            ? (rappelTop + 52 + 16) + 'px'   // rappel + header mobile (52px) + espace
+            : (rappelTop > 0 ? 72 : 24) + 'px',
+          paddingBottom: isMobile ? '76px' : '24px', // espace pour bottom nav mobile
+          paddingLeft: isMobile ? '12px' : '24px',
+          paddingRight: isMobile ? '12px' : '24px',
+          boxSizing: 'border-box'
+        }}>
           {children}
         </main>
       </div>

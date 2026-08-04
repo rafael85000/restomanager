@@ -25,13 +25,18 @@ const TOUTES_PERMISSIONS = [
   { key: 'mon-abonnement', label: 'Mon abonnement', icon: 'ti-credit-card', href: '/abonnement', section: 'Paramètres' },
 ]
 
-export default function Sidebar({ membreActif }) {
+// Items prioritaires affichés dans la bottom nav mobile
+const BOTTOM_NAV_KEYS = ['dashboard', 'haccp', 'inventaire', 'fiches-recettes']
+
+export default function Sidebar({ membreActif, rappelTop = 0 }) {
   const pathname = usePathname()
   const router = useRouter()
   const [etablissements, setEtablissements] = useState([])
   const [etablissementActif, setEtablissementActif] = useState(null)
   const [showSwitcher, setShowSwitcher] = useState(false)
   const [showMenuProfil, setShowMenuProfil] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
 
   const permissions = membreActif?.permissions || []
   const aTout = permissions.includes('tout')
@@ -53,26 +58,31 @@ export default function Sidebar({ membreActif }) {
     sections.find(s => (s.section || '__none__') === sec).items.push(item)
   })
 
+  // Items bottom nav mobile
+  const bottomNavItems = itemsVisibles.filter(i => BOTTOM_NAV_KEYS.includes(i.key)).slice(0, 4)
+  // Ajouter "Plus" à la fin
+  const showMoreInBottomNav = itemsVisibles.length > BOTTOM_NAV_KEYS.length
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
+
   useEffect(() => { chargerEtablissements() }, [])
+
+  // Fermer le menu mobile au changement de page
+  useEffect(() => { setMobileMenuOpen(false) }, [pathname])
 
   async function chargerEtablissements() {
     const membreRaw = localStorage.getItem('membre_actif')
     const membre = membreRaw ? JSON.parse(membreRaw) : null
-    
     let data = []
     if (membre?.type === 'externe') {
-      // Compte externe — charger les établissements autorisés
-      const { data: compteExterne } = await supabase
-        .from('comptes_externes')
-        .select('etablissements_ids')
-        .eq('user_id', membre.id)
-        .single()
+      const { data: compteExterne } = await supabase.from('comptes_externes').select('etablissements_ids').eq('user_id', membre.id).single()
       if (compteExterne?.etablissements_ids?.length) {
-        const { data: etabs } = await supabase
-          .from('etablissements')
-          .select('*')
-          .in('id', compteExterne.etablissements_ids)
-          .order('created_at')
+        const { data: etabs } = await supabase.from('etablissements').select('*').in('id', compteExterne.etablissements_ids).order('created_at')
         data = etabs || []
       }
     } else {
@@ -106,10 +116,191 @@ export default function Sidebar({ membreActif }) {
     window.location.href = '/select-user'
   }
 
+  // ── MOBILE ──
+  if (isMobile) {
+    return (
+      <>
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css" />
+
+        {/* Header mobile */}
+        <div style={{
+          position: 'fixed', top: rappelTop, left: 0, right: 0, zIndex: 100,
+          background: '#1c1b1f', borderBottom: '0.5px solid #2c2b2f',
+          height: 52, display: 'flex', alignItems: 'center',
+          justifyContent: 'space-between', padding: '0 16px'
+        }}>
+          {/* Logo */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ width: 28, height: 28, background: '#534ab7', borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <i className="ti ti-chef-hat" style={{ color: '#fff', fontSize: 14 }} />
+            </div>
+            <span style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>FIMC</span>
+          </div>
+
+          {/* Établissement actif */}
+          {etablissementActif && (
+            <div style={{ fontSize: 12, color: '#888780', flex: 1, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', padding: '0 10px' }}>
+              {etablissementActif.nom}
+            </div>
+          )}
+
+          {/* Hamburger */}
+          <button onClick={() => setMobileMenuOpen(true)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: '#a8a6a0' }}>
+            <i className="ti ti-menu-2" style={{ fontSize: 22 }} />
+          </button>
+        </div>
+
+        {/* Bottom navigation */}
+        <div style={{
+          position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 100,
+          background: '#1c1b1f', borderTop: '0.5px solid #2c2b2f',
+          display: 'flex', alignItems: 'stretch',
+          height: 60, paddingBottom: 'env(safe-area-inset-bottom)'
+        }}>
+          {bottomNavItems.map(item => {
+            const active = pathname === item.href
+            return (
+              <Link key={item.href} href={item.href} style={{
+                flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
+                justifyContent: 'center', gap: 3, textDecoration: 'none',
+                color: active ? '#534ab7' : '#666460',
+                borderTop: active ? '2px solid #534ab7' : '2px solid transparent',
+                background: 'transparent'
+              }}>
+                <i className={`ti ${item.icon}`} style={{ fontSize: 20 }} />
+                <span style={{ fontSize: 9, fontWeight: active ? 600 : 400, letterSpacing: '0.2px' }}>
+                  {item.label.length > 10 ? item.label.slice(0, 9) + '…' : item.label}
+                </span>
+              </Link>
+            )
+          })}
+          {/* Bouton Plus */}
+          <button onClick={() => setMobileMenuOpen(true)} style={{
+            flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
+            justifyContent: 'center', gap: 3, background: 'none', border: 'none',
+            cursor: 'pointer', color: mobileMenuOpen ? '#534ab7' : '#666460',
+            borderTop: mobileMenuOpen ? '2px solid #534ab7' : '2px solid transparent'
+          }}>
+            <i className="ti ti-grid-dots" style={{ fontSize: 20 }} />
+            <span style={{ fontSize: 9, fontWeight: 400 }}>Plus</span>
+          </button>
+        </div>
+
+        {/* Drawer menu complet */}
+        {mobileMenuOpen && (
+          <>
+            {/* Overlay */}
+            <div onClick={() => setMobileMenuOpen(false)}
+              style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 200 }} />
+
+            {/* Drawer */}
+            <div style={{
+              position: 'fixed', top: 0, right: 0, bottom: 0, zIndex: 201,
+              width: '80%', maxWidth: 300, background: '#1c1b1f',
+              display: 'flex', flexDirection: 'column', overflowY: 'auto',
+              boxShadow: '-4px 0 20px rgba(0,0,0,0.4)'
+            }}>
+              {/* Header drawer */}
+              <div style={{ padding: '16px', borderBottom: '0.5px solid #2c2b2f', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ width: 28, height: 28, background: '#534ab7', borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <i className="ti ti-chef-hat" style={{ color: '#fff', fontSize: 14 }} />
+                  </div>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>FIMC</span>
+                </div>
+                <button onClick={() => setMobileMenuOpen(false)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#666460', padding: 4 }}>
+                  <i className="ti ti-x" style={{ fontSize: 20 }} />
+                </button>
+              </div>
+
+              {/* Switcher établissement */}
+              {(aTout || membre?.type === 'externe') && (
+                <div style={{ padding: '12px 16px', borderBottom: '0.5px solid #2c2b2f' }}>
+                  <div onClick={() => setShowSwitcher(!showSwitcher)}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '8px 10px', borderRadius: 8, background: '#2c2b2f' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#639922' }} />
+                      <div style={{ fontSize: 12, color: '#fff', fontWeight: 500 }}>{etablissementActif?.nom || 'Chargement…'}</div>
+                    </div>
+                    <i className="ti ti-selector" style={{ fontSize: 14, color: '#888780' }} />
+                  </div>
+                  {showSwitcher && (
+                    <div style={{ background: '#fff', borderRadius: 10, marginTop: 6, overflow: 'hidden' }}>
+                      {etablissements.map(et => (
+                        <div key={et.id} onClick={() => changerEtablissement(et)}
+                          style={{ padding: '10px 14px', cursor: 'pointer', borderBottom: '0.5px solid #f1efe8', background: etablissementActif?.id === et.id ? '#eeedfe' : '#fff' }}>
+                          <div style={{ fontSize: 13, fontWeight: 500, color: '#2c2c2a' }}>{et.nom}</div>
+                        </div>
+                      ))}
+                      <Link href="/etablissements" style={{ display: 'block', padding: '10px 14px', fontSize: 12, color: '#534ab7', fontWeight: 500, textDecoration: 'none' }}>
+                        <i className="ti ti-plus" style={{ marginRight: 5 }} />Gérer les établissements
+                      </Link>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Navigation */}
+              <nav style={{ flex: 1, padding: 8 }}>
+                {sections.map((group, gi) => (
+                  <div key={gi} style={{ marginBottom: 8 }}>
+                    {group.section && (
+                      <div style={{ fontSize: 10, fontWeight: 500, color: '#555450', textTransform: 'uppercase', letterSpacing: '0.6px', padding: '6px 12px 4px' }}>
+                        {group.section}
+                      </div>
+                    )}
+                    {group.items.map(item => {
+                      const active = pathname === item.href
+                      return (
+                        <Link key={item.href} href={item.href}
+                          style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, marginBottom: 2, fontSize: 14, fontWeight: active ? 500 : 400, color: active ? '#fff' : '#a8a6a0', background: active ? '#534ab7' : 'transparent', textDecoration: 'none' }}>
+                          <i className={`ti ${item.icon}`} style={{ fontSize: 18, color: active ? '#fff' : '#666460', flexShrink: 0 }} />
+                          {item.label}
+                        </Link>
+                      )
+                    })}
+                  </div>
+                ))}
+              </nav>
+
+              {/* Profil bas drawer */}
+              <div style={{ padding: '16px', borderTop: '0.5px solid #2c2b2f' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                  <div style={{ width: 34, height: 34, borderRadius: '50%', background: '#2c2b2f', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 500, color: '#a8a6a0', flexShrink: 0 }}>
+                    {(membreActif?.nom || '?').split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase()}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 500, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{membreActif?.nom || 'Utilisateur'}</div>
+                    <div style={{ fontSize: 11, color: '#666460' }}>{membreActif?.role || ''}</div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <button onClick={quitterSession}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderRadius: 8, background: '#2c2b2f', border: 'none', color: '#a8a6a0', fontSize: 13, cursor: 'pointer', width: '100%', textAlign: 'left' }}>
+                    <i className="ti ti-switch-horizontal" style={{ fontSize: 16 }} /> Changer d'utilisateur
+                  </button>
+                  {aTout && (
+                    <button onClick={deconnexion}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderRadius: 8, background: '#2c2b2f', border: 'none', color: '#e05858', fontSize: 13, cursor: 'pointer', width: '100%', textAlign: 'left' }}>
+                      <i className="ti ti-logout" style={{ fontSize: 16 }} /> Se déconnecter
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+      </>
+    )
+  }
+
+  // ── DESKTOP ── (identique à l'original)
   return (
     <>
       <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css" />
-      <aside style={{ width: 240, minHeight: '100vh', background: '#1c1b1f', display: 'flex', flexDirection: 'column', position: 'fixed', top: 0, left: 0, zIndex: 100, overflowY: 'auto' }}>
+      <aside style={{ width: 240, minHeight: '100vh', background: '#1c1b1f', display: 'flex', flexDirection: 'column', position: 'fixed', top: rappelTop, left: 0, zIndex: 100, overflowY: 'auto', height: rappelTop ? `calc(100vh - ${rappelTop}px)` : '100vh' }}>
 
         {/* Logo */}
         <div style={{ padding: '18px 16px', borderBottom: '0.5px solid #2c2b2f', display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -119,7 +310,7 @@ export default function Sidebar({ membreActif }) {
           <div style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>FIMC</div>
         </div>
 
-        {/* Switcher établissement — seulement gérant */}
+        {/* Switcher établissement */}
         {(aTout || membre?.type === 'externe') && (
           <div style={{ padding: '12px 16px', borderBottom: '0.5px solid #2c2b2f', position: 'relative' }}>
             <div onClick={() => setShowSwitcher(!showSwitcher)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', padding: '8px 10px', borderRadius: 8, background: '#2c2b2f' }}>
@@ -145,7 +336,7 @@ export default function Sidebar({ membreActif }) {
           </div>
         )}
 
-        {/* Navigation filtrée par permissions */}
+        {/* Navigation */}
         <nav style={{ flex: 1, padding: '8px', paddingTop: 12 }}>
           {sections.map((group, gi) => (
             <div key={gi} style={{ marginBottom: 8 }}>
@@ -179,7 +370,6 @@ export default function Sidebar({ membreActif }) {
             </div>
             <i className="ti ti-dots-vertical" style={{ fontSize: 14, color: '#666460', flexShrink: 0 }} />
           </div>
-
           {showMenuProfil && (
             <div style={{ position: 'absolute', bottom: '100%', left: 16, right: 16, background: '#fff', borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.3)', zIndex: 200, marginBottom: 4, overflow: 'hidden' }}>
               <div onClick={quitterSession} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', fontSize: 13, color: '#2c2c2a', cursor: 'pointer', borderBottom: '0.5px solid #f1efe8' }}>
