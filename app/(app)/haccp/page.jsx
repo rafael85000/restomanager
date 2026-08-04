@@ -519,14 +519,15 @@ for (let ti = 0; ti < ingSegs.length; ti++) {
       const pdfUrl = URL.createObjectURL(pdfBlob)
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
       if (isMobile) {
-        const dataUri = doc.output('datauristring')
-        const w = window.open('', '_blank')
-        if (w) {
-          w.document.write('<iframe src="' + dataUri + '" style="width:100%;height:100vh;border:none"></iframe>')
-          w.document.close()
-        }
-        showToast('PDF ouvert — appuyez sur Imprimer')
-      } else {
+        const pdfBase64 = doc.output('datauristring')
+        const a = document.createElement('a')
+        a.href = pdfBase64
+        a.download = (formEtiq.produit_nom||'etiquette').replace(/[^a-zA-Z0-9]/g,'_')+'.pdf'
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        showToast('PDF téléchargé — ouvrez-le pour imprimer')
+      }else {
         // Sur desktop : impression directe via iframe
         const iframe = document.createElement('iframe')
         iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;border:none'
