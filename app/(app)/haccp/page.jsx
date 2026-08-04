@@ -518,24 +518,49 @@ for (let ti = 0; ti < ingSegs.length; ti++) {
       const pdfBlob = doc.output('blob')
       const pdfUrl = URL.createObjectURL(pdfBlob)
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
-      if (isMobile) {
-        const isChromeIOS = /CriOS/i.test(navigator.userAgent)
+    if (isMobile) {
         const pdfBase64 = doc.output('datauristring')
+        const isChromeIOS = /CriOS/i.test(navigator.userAgent)
+        const isAndroid = /Android/i.test(navigator.userAgent)
 
-        if (isChromeIOS) {
-          // Chrome iOS : télécharger le PDF (seule option possible)
+        if (isChromeIOS || isAndroid) {
+          // Chrome iOS et Android : télécharger le PDF
           const a = document.createElement('a')
           a.href = pdfBase64
           a.download = (formEtiq.produit_nom||'etiquette').replace(/[^a-zA-Z0-9]/g,'_')+'.pdf'
           document.body.appendChild(a)
           a.click()
           document.body.removeChild(a)
-          showToast('PDF téléchargé — ouvrez-le dans Fichiers pour imprimer')
+          showToast('PDF téléchargé — ouvrez-le pour imprimer')
         } else {
-          // Safari iOS et Android : impression native
+          // Safari iOS : impression AirPrint avec bouton caché à l'impression
           const w = window.open('', '_blank')
           if (w) {
-            w.document.write(`<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0}iframe{width:100vw;height:80vh;border:none}button{display:block;width:90%;margin:16px auto;padding:14px;background:#534ab7;color:#fff;border:none;border-radius:10px;font-size:16px;font-weight:600}</style></head><body><iframe src="${pdfBase64}"></iframe><button onclick="window.print()">🖨️ Imprimer</button></body></html>`)
+            w.document.write(`<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { background:#111; display:flex; flex-direction:column; align-items:center; min-height:100vh; font-family:sans-serif; }
+    iframe { width:100vw; height:80vh; border:none; display:block; }
+    .btn-wrap { padding:16px; width:100%; display:flex; gap:10px; }
+    button { flex:1; padding:14px; background:#534ab7; color:#fff; border:none; border-radius:10px; font-size:16px; font-weight:600; cursor:pointer; }
+    button.retour { background:#2c2b2f; }
+    @media print {
+      .btn-wrap { display:none !important; }
+      iframe { height:100vh; }
+    }
+  </style>
+</head>
+<body>
+  <iframe src="${pdfBase64}"></iframe>
+  <div class="btn-wrap">
+    <button class="retour" onclick="window.close()">← Retour</button>
+    <button onclick="window.print()">🖨️ Imprimer</button>
+  </div>
+</body>
+</html>`)
             w.document.close()
           }
           showToast('Appuyez sur Imprimer')
