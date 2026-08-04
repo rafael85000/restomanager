@@ -517,15 +517,24 @@ for (let ti = 0; ti < ingSegs.length; ti++) {
 
       const pdfBlob = doc.output('blob')
       const pdfUrl = URL.createObjectURL(pdfBlob)
-      const iframe = document.createElement('iframe')
-      iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;border:none'
-      iframe.src = pdfUrl
-      document.body.appendChild(iframe)
-      iframe.onload = () => {
-        iframe.contentWindow.focus(); iframe.contentWindow.print()
-        setTimeout(()=>{ try{document.body.removeChild(iframe);URL.revokeObjectURL(pdfUrl)}catch(e){} },5000)
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+      if (isMobile) {
+        // Sur mobile : ouvrir dans nouvel onglet → bouton Imprimer natif (AirPrint iOS / Android)
+        window.open(pdfUrl, '_blank')
+        setTimeout(()=>URL.revokeObjectURL(pdfUrl), 10000)
+        showToast('Appuyez sur le bouton Imprimer dans le PDF')
+      } else {
+        // Sur desktop : impression directe via iframe
+        const iframe = document.createElement('iframe')
+        iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;border:none'
+        iframe.src = pdfUrl
+        document.body.appendChild(iframe)
+        iframe.onload = () => {
+          iframe.contentWindow.focus(); iframe.contentWindow.print()
+          setTimeout(()=>{ try{document.body.removeChild(iframe);URL.revokeObjectURL(pdfUrl)}catch(e){} },5000)
+        }
+        showToast('Impression lancee !')
       }
-      showToast('Impression lancee !')
     } catch(e) { showToast('Erreur: '+e.message,'err'); console.error(e) }
 
     setFormEtiq(prev=>({...prev,produit_nom:'',date_fabrication:new Date().toISOString().split('T')[0],jours_dlc:3,dlc_libre:'',nb_exemplaires:1,poids:'',unite_poids:'g',lot_id:'',lot_numero:'',lot_recette:'',afficher_ingredients:false}))
