@@ -244,7 +244,7 @@ export default function HACCP() {
       supabase.from('haccp_etiq_modeles').select('*').eq('etablissement_id',etabId).order('nom'),
       supabase.from('haccp_etiquettes').select('*').eq('etablissement_id',etabId).order('created_at',{ascending:false}).limit(15),
       supabase.from('haccp_cuissons').select('*').eq('etablissement_id',etabId).order('date_releve',{ascending:false}).limit(30),
-     supabase.from('haccp_lots').select('*,produits(nom),recettes(nom)')
+    supabase.from('haccp_lots').select('*,produits(nom),recettes(nom)').eq('etablissement_id',etabId).order('created_at',{ascending:false}),
       supabase.from('haccp_receptions').select('*,fournisseurs(nom)').eq('etablissement_id',etabId).order('date_reception',{ascending:false}).limit(30),
       supabase.from('haccp_documents').select('*').eq('etablissement_id',etabId).order('date_expiration',{ascending:true}),
       supabase.from('haccp_nettoyage_log').select('*').eq('etablissement_id',etabId).gte('created_at',todayStr+'T00:00:00'),
@@ -1522,7 +1522,7 @@ for (let ti = 0; ti < ingSegs.length; ti++) {
                   <div style={{fontSize:12,color:'#888780',marginBottom:5}}>Lier à un lot <span style={{fontWeight:400,fontSize:11}}>(optionnel — affiche le n° sur l'étiquette)</span></div>
                   <select value={formEtiq.lot_id||''} onChange={e=>{
                     const lot=lots.find(l=>l.id===e.target.value)
-                    const recetteNom=lot?.recettes?.nom||(lot?.haccp_etiq_modeles?.nom ? '🏷️ '+lot.haccp_etiq_modeles.nom : '')||''
+                    const recetteNom=lot?.recettes?.nom||(lot?.haccp_etiq_modeles?.nom?'🏷️ '+lot.haccp_etiq_modeles.nom:'')||''
                     setFormEtiq({...formEtiq,lot_id:e.target.value,lot_numero:lot?lot.numero_lot:'',lot_recette:recetteNom})
                     // Charger les ingrédients via recette_id du lot
                     const rid = lot?.recette_id || null
@@ -1560,7 +1560,7 @@ for (let ti = 0; ti < ingSegs.length; ti++) {
                   }} style={inp}>
                     <option value="">Aucun lot</option>
                     {lots.slice(0,50).map(l=>(
-                      <option key={l.id} value={l.id}>{l.numero_lot}{l.recettes?.nom?' — Production: '+l.recettes.nom:l.produit_nom?' — '+l.produit_nom:''}</option>
+                 <option key={l.id} value={l.id}>{l.numero_lot}{l.recettes?.nom?' — Production: '+l.recettes.nom:l.haccp_etiq_modeles?.nom?' — Étiquette: '+l.haccp_etiq_modeles.nom:l.produit_nom?' — '+l.produit_nom:''}</option>
                     ))}
                   </select>
                   {formEtiq.lot_id&&<div style={{fontSize:11,color:'#534ab7',marginTop:3,lineHeight:1.6}}>
