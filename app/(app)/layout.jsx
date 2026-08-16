@@ -111,7 +111,7 @@ export default function AppLayout({ children }) {
         if (!etabId) return
         const { data } = await supabase
           .from('haccp_lots')
-          .select('id,numero_lot,produit_nom,produits(nom)')
+          .select('id,numero_lot,produit_nom,recettes(nom),haccp_etiq_modeles(nom)')
           .eq('etablissement_id', etabId)
           .eq('rappele', true)
         setLotsRappeles(data || [])

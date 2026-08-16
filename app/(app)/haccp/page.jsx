@@ -244,12 +244,13 @@ export default function HACCP() {
       supabase.from('haccp_etiq_modeles').select('*').eq('etablissement_id',etabId).order('nom'),
       supabase.from('haccp_etiquettes').select('*').eq('etablissement_id',etabId).order('created_at',{ascending:false}).limit(15),
       supabase.from('haccp_cuissons').select('*').eq('etablissement_id',etabId).order('date_releve',{ascending:false}).limit(30),
-      supabase.from('haccp_lots').select('*,produits(nom),recettes(nom)').eq('etablissement_id',etabId).order('created_at',{ascending:false}).limit(100),
+     supabase.from('haccp_lots').select('*,produits(nom),recettes(nom)')
       supabase.from('haccp_receptions').select('*,fournisseurs(nom)').eq('etablissement_id',etabId).order('date_reception',{ascending:false}).limit(30),
       supabase.from('haccp_documents').select('*').eq('etablissement_id',etabId).order('date_expiration',{ascending:true}),
       supabase.from('haccp_nettoyage_log').select('*').eq('etablissement_id',etabId).gte('created_at',todayStr+'T00:00:00'),
       supabase.from('equipe').select('id,nom,email').eq('etablissement_id',etabId).order('nom'),
       supabase.from('haccp_releves_temperature').select('*').order('releve_le', {ascending: false}).limit(200)
+      
     ])
     if(etab?.nom) setEtabNom(etab.nom)
     setRecettes(rec||[]); setProduits(prod||[]); setFournisseurs(fourn||[])
@@ -517,66 +518,15 @@ for (let ti = 0; ti < ingSegs.length; ti++) {
 
       const pdfBlob = doc.output('blob')
       const pdfUrl = URL.createObjectURL(pdfBlob)
-      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
-    if (isMobile) {
-        const pdfBase64 = doc.output('datauristring')
-        const isChromeIOS = /CriOS/i.test(navigator.userAgent)
-        const isAndroid = /Android/i.test(navigator.userAgent)
-
-        if (isChromeIOS || isAndroid) {
-          // Chrome iOS et Android : télécharger le PDF
-          const a = document.createElement('a')
-          a.href = pdfBase64
-          a.download = (formEtiq.produit_nom||'etiquette').replace(/[^a-zA-Z0-9]/g,'_')+'.pdf'
-          document.body.appendChild(a)
-          a.click()
-          document.body.removeChild(a)
-          showToast('PDF téléchargé — ouvrez-le pour imprimer')
-        } else {
-          // Safari iOS : impression AirPrint avec bouton caché à l'impression
-          const w = window.open('', '_blank')
-          if (w) {
-            w.document.write(`<!DOCTYPE html>
-<html>
-<head>
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <style>
-    * { margin:0; padding:0; box-sizing:border-box; }
-    body { background:#111; display:flex; flex-direction:column; align-items:center; min-height:100vh; font-family:sans-serif; }
-    iframe { width:100vw; height:80vh; border:none; display:block; }
-    .btn-wrap { padding:16px; width:100%; display:flex; gap:10px; }
-    button { flex:1; padding:14px; background:#534ab7; color:#fff; border:none; border-radius:10px; font-size:16px; font-weight:600; cursor:pointer; }
-    button.retour { background:#2c2b2f; }
-    @media print {
-      .btn-wrap { display:none !important; }
-      iframe { height:100vh; }
-    }
-  </style>
-</head>
-<body>
-  <iframe src="${pdfBase64}"></iframe>
-  <div class="btn-wrap">
-    <button class="retour" onclick="window.close()">← Retour</button>
-    <button onclick="window.print()">🖨️ Imprimer</button>
-  </div>
-</body>
-</html>`)
-            w.document.close()
-          }
-          showToast('Appuyez sur Imprimer')
-        }
-      }else {
-        // Sur desktop : impression directe via iframe
-        const iframe = document.createElement('iframe')
-        iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;border:none'
-        iframe.src = pdfUrl
-        document.body.appendChild(iframe)
-        iframe.onload = () => {
-          iframe.contentWindow.focus(); iframe.contentWindow.print()
-          setTimeout(()=>{ try{document.body.removeChild(iframe);URL.revokeObjectURL(pdfUrl)}catch(e){} },5000)
-        }
-        showToast('Impression lancee !')
+      const iframe = document.createElement('iframe')
+      iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;border:none'
+      iframe.src = pdfUrl
+      document.body.appendChild(iframe)
+      iframe.onload = () => {
+        iframe.contentWindow.focus(); iframe.contentWindow.print()
+        setTimeout(()=>{ try{document.body.removeChild(iframe);URL.revokeObjectURL(pdfUrl)}catch(e){} },5000)
       }
+      showToast('Impression lancee !')
     } catch(e) { showToast('Erreur: '+e.message,'err'); console.error(e) }
 
     setFormEtiq(prev=>({...prev,produit_nom:'',date_fabrication:new Date().toISOString().split('T')[0],jours_dlc:3,dlc_libre:'',nb_exemplaires:1,poids:'',unite_poids:'g',lot_id:'',lot_numero:'',lot_recette:'',afficher_ingredients:false}))
@@ -1572,13 +1522,13 @@ for (let ti = 0; ti < ingSegs.length; ti++) {
                   <div style={{fontSize:12,color:'#888780',marginBottom:5}}>Lier à un lot <span style={{fontWeight:400,fontSize:11}}>(optionnel — affiche le n° sur l'étiquette)</span></div>
                   <select value={formEtiq.lot_id||''} onChange={e=>{
                     const lot=lots.find(l=>l.id===e.target.value)
-                    const recetteNom=lot?.recettes?.nom||''
+                    const recetteNom=lot?.recettes?.nom||(lot?.haccp_etiq_modeles?.nom ? '🏷️ '+lot.haccp_etiq_modeles.nom : '')||''
                     setFormEtiq({...formEtiq,lot_id:e.target.value,lot_numero:lot?lot.numero_lot:'',lot_recette:recetteNom})
                     // Charger les ingrédients via recette_id du lot
                     const rid = lot?.recette_id || null
                     if(rid) {
                       supabase.from('recette_ingredients')
-                        .select('*,produits!recette_ingredients_produit_id_fkey(id,nom,allergenes)')
+                        .select('*,produits!recette_ingredients_produit_id_fkey(id,nom,allergenes),recette_id_lie')
                         .eq('recette_id',rid)
                         .order('poids',{ascending:false})
                         .then(async ({data,error})=>{
@@ -1616,7 +1566,7 @@ for (let ti = 0; ti < ingSegs.length; ti++) {
                   {formEtiq.lot_id&&<div style={{fontSize:11,color:'#534ab7',marginTop:3,lineHeight:1.6}}>
                     N° lot : <strong>{formEtiq.lot_numero}</strong>{formEtiq.lot_recette?' — '+formEtiq.lot_recette:''}
                   </div>}
-                {formEtiq.lot_id&&formEtiq.lot_recette===''&&<div style={{fontSize:11,color:'#b4b2a9',marginTop:4}}>Ce lot n'est pas lié à une production — pas d'ingrédients disponibles</div>}
+                {formEtiq.lot_id&&formEtiq.lot_recette===''&&etiqIngredients.length===0&&<div style={{fontSize:11,color:'#b4b2a9',marginTop:4}}>Ce lot n'est pas lié à une production — pas d'ingrédients disponibles</div>}
                 {formEtiq.lot_id&&etiqIngredients.length>0&&(
                   <div style={{marginTop:8}}>
                     <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:13,color:'#2c2c2a'}}>
