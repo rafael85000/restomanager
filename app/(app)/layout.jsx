@@ -106,17 +106,30 @@ export default function AppLayout({ children }) {
   // Fetch rappels de lots actifs
   useEffect(() => {
     const fetchRappels = async () => {
-      try {
-        const etabId = typeof window !== 'undefined' ? localStorage.getItem('etablissement_actif') : null
-        if (!etabId) return
-        const { data } = await supabase
-          .from('haccp_lots')
-          .select('id,numero_lot,produit_nom,recettes(nom),haccp_etiq_modeles(nom)')
-          .eq('etablissement_id', etabId)
-          .eq('rappele', true)
-        setLotsRappeles(data || [])
-      } catch(e) {}
-    }
+  try {
+    const etabId = typeof window !== 'undefined' ? localStorage.getItem('etablissement_actif') : null
+    if (!etabId) return
+    const { data: lotsData } = await supabase
+      .from('haccp_lots')
+      .select('id,numero_lot,produit_nom,recette_id,etiquette_modele_id')
+      .eq('etablissement_id', etabId)
+      .eq('rappele', true)
+    
+    // Enrichir avec les noms
+    const enrichis = await Promise.all((lotsData||[]).map(async l => {
+      let nom = l.produit_nom || ''
+      if (l.recette_id) {
+        const {data:r} = await supabase.from('recettes').select('nom').eq('id',l.recette_id).single()
+        if (r?.nom) nom = r.nom
+      } else if (l.etiquette_modele_id) {
+        const {data:e} = await supabase.from('haccp_etiq_modeles').select('nom').eq('id',l.etiquette_modele_id).single()
+        if (e?.nom) nom = e.nom
+      }
+      return {...l, produit_nom: nom}
+    }))
+    setLotsRappeles(enrichis)
+  } catch(e) {}
+}
     fetchRappels()
     const iv = setInterval(fetchRappels, 30000)
     return () => clearInterval(iv)
@@ -144,7 +157,7 @@ export default function AppLayout({ children }) {
           <i className="ti ti-alert-triangle" style={{ fontSize: 18, flexShrink: 0 }}/>
           <div style={{ flex: 1, fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             🚨 RAPPEL DE LOT : {lotsRappeles.map(l =>
-              l.numero_lot + ' (' + (l.produits?.nom || l.produit_nom || '') + ')'
+              l.numero_lot + (l.produit_nom ? ' ('+l.produit_nom+')' : '')
             ).join(' • ')}
           </div>
           <a href="/haccp" style={{ color: '#fff', fontSize: 12, textDecoration: 'underline', whiteSpace: 'nowrap' }}>
