@@ -6,13 +6,13 @@ export default function Home() {
   const router = useRouter()
 
   useEffect(() => {
+    // Ne pas rediriger si on est sur une page publique
+    if (window.location.pathname === '/privacy') return
     const membreRaw = localStorage.getItem('membre_actif')
     const etabId = localStorage.getItem('etablissement_actif')
     if (etabId) {
-      // Établissement connu → select-user (veille)
       router.push('/select-user')
     } else {
-      // Pas de session du tout → auth
       router.push('/auth')
     }
   }, [])
