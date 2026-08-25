@@ -244,7 +244,7 @@ export default function HACCP() {
       supabase.from('haccp_etiq_modeles').select('*').eq('etablissement_id',etabId).order('nom'),
       supabase.from('haccp_etiquettes').select('*').eq('etablissement_id',etabId).order('created_at',{ascending:false}).limit(15),
       supabase.from('haccp_cuissons').select('*').eq('etablissement_id',etabId).order('date_releve',{ascending:false}).limit(30),
-      supabase.from('haccp_lots').select('*,produits(nom),recettes(nom)'),
+      supabase.from('haccp_lots').select('*,produits(nom),recettes(nom)').eq('etablissement_id', etabId).order('created_at',{ascending:false}).limit(100),
       supabase.from('haccp_receptions').select('*,fournisseurs(nom)').eq('etablissement_id',etabId).order('date_reception',{ascending:false}).limit(30),
       supabase.from('haccp_documents').select('*').eq('etablissement_id',etabId).order('date_expiration',{ascending:true}),
       supabase.from('haccp_nettoyage_log').select('*').eq('etablissement_id',etabId).gte('created_at',todayStr+'T00:00:00'),
